@@ -1,12 +1,13 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import vgg16
+import torch
+
 
 from VGGBackbone import VGGBackbone
 from FCNHead32s import FCNHead32s
 from utils import get_output_shape
 import conf
-
 
 class FCN32s(nn.Module):
     """Rete completa: backbone + head, collegate in forward."""
@@ -31,7 +32,6 @@ class FCN32s(nn.Module):
                 continue
             current_size = get_output_shape(current_size, layer)
             print(f"{name:<40} {current_size}")
-
 
 def main():
     model = FCN32s()
