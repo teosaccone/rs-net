@@ -19,10 +19,13 @@ class FCN32s(nn.Module):
     def forward(self, x):
         h = self.head(self.backbone(x))
         # allinea la dimensione di uscita a quella dell'input
-        return h[:, :, :x.size(2), :x.size(3)]
+        return h[:, :, :x.size(2), :x.size(3)].contiguous()
 
     def print_shapes(self, input_size=conf.INPUT_SIZE_CF):
-        """Stampa la shape in output di ogni layer della rete."""
+        """
+        Stampa la shape in output di ogni layer della rete mandando un tensore lungo
+        tutta la rete e mandandone in output le dimensioni.
+        """
         print(f"{'Layer':<40} {'Output shape'}")
         print("-" * 60)
 
@@ -36,6 +39,9 @@ class FCN32s(nn.Module):
 def main():
     model = FCN32s()
     model.print_shapes()
+
+    x = torch.zeros(conf.INPUT_SIZE_CF)
+    print(model(x).shape)
 
 if(__name__ == "__main__"):
     main()
