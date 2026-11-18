@@ -1,6 +1,7 @@
 # Ambienti e Cache
 __pycache__/
 .venv/
+.ipcv_I2/
 
 # Checkpoint e Pesi
 checkpoints/
