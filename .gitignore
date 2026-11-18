@@ -1,0 +1,24 @@
+# Ambienti e Cache
+__pycache__/
+.venv/
+.ipcv_I2/
+
+# Checkpoint e Pesi
+checkpoints/
+
+# Data e Immagini
+data/
+mnist/
+**/raw/
+*.ubyte
+*.gz
+*.png
+*.jpg
+*.jpeg
+*.heic
+*.HEIC
+*.zip
+
+# OS System Files (Mac / Windows)
+.DS_Store
+Thumbs.db
