@@ -32,6 +32,8 @@ IGNORE_INDEX = 255
 
 # Crop di training (preso dopo il resize a IMG_HEIGHT x IMG_WIDTH): sta in 4 GB a batch 4
 CROP_SIZE = (256, 512)
+# Zoom casuale della data augmentation di train.py (fattore rispetto a IMG_HEIGHT x IMG_WIDTH)
+SCALE_RANGE = (0.75, 1.5)
 
 # Lookup table: indice = ID originale (0..33), valore = trainId (0..18) o 255
 ID_TO_TRAINID = np.array([

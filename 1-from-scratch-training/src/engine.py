@@ -2,6 +2,7 @@
 import math
 
 import torch
+from tqdm import tqdm
 
 import conf
 from FCN32s import FCN32s
@@ -21,7 +22,8 @@ def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.
 
 
 def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None, ref_loss=None,
-                    scheduler=None, max_grad_norm=None, grad_norms=None, accum_steps=1):
+                    scheduler=None, max_grad_norm=None, grad_norms=None, accum_steps=1,
+                    cm=None, desc=None):
     """Restituisce (loss di ogni micro-batch, esplosa?).
 
     Si ferma se la loss diventa NaN o supera 3 volte la loss iniziale ref_loss (slide 9).
@@ -31,22 +33,34 @@ def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None,
     accum_steps: gradient accumulation. I gradienti di accum_steps micro-batch si sommano e i pesi
         si aggiornano una volta sola: equivale a un batch accum_steps volte più grande
         (esattamente, perché la rete non ha BatchNorm). I micro-batch avanzati a fine epoca si scartano.
+    cm: se passata una confusion matrix (C x C su cuda), ci accumula le predizioni di train
+        (per il mIoU di train: costa solo un argmax, le predizioni ci sono già).
+    desc: se passato, mostra una progress bar tqdm con questa descrizione.
     """
     model.train()
     losses = []
     optimizer.zero_grad()
-    for step, (imgs, masks) in enumerate(loader):
+    total = len(loader) if max_steps is None else min(max_steps, len(loader))
+    pbar = tqdm(loader, total=total, desc=desc, disable=desc is None, dynamic_ncols=True, leave=False)
+    for step, (imgs, masks) in enumerate(pbar):
         if step == max_steps:
             break
         imgs, masks = imgs.cuda(), masks.cuda().long()  # CrossEntropy vuole target int64
 
         with torch.autocast("cuda", dtype=torch.float16):
-            loss = criterion(model(imgs), masks)
+            logits = model(imgs)
+            loss = criterion(logits, masks)
 
         losses.append(loss.item())
         ref_loss = ref_loss or losses[0]
         if not math.isfinite(losses[-1]) or losses[-1] > 3 * ref_loss:
+            pbar.close()
             return losses, True
+        if cm is not None:
+            cm += confusion_matrix(logits.argmax(dim=1), masks, conf.N_CLASSES, conf.IGNORE_INDEX)
+        if step % 10 == 0:  # media mobile delle ultime 50 loss: più leggibile del valore singolo
+            pbar.set_postfix(loss=f"{sum(losses[-50:]) / len(losses[-50:]):.3f}",
+                             lr=f"{optimizer.param_groups[0]['lr']:.2e}")
 
         # loss divisa per accum_steps: la somma dei gradienti diventa la loro media sul batch effettivo.
         # Scalata dall'AMP per evitare underflow dei gradienti in fp16.
@@ -67,16 +81,20 @@ def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None,
         optimizer.zero_grad()
         if scheduler is not None:
             scheduler.step()
+    pbar.close()
     return losses, False
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion) -> dict:
-    """Loss media, mIoU, F1 medio, pixel accuracy e IoU per classe sull'intero loader."""
+def evaluate(model, loader, criterion, desc=None) -> dict:
+    """Loss media, mIoU, F1 medio, pixel accuracy e IoU per classe sull'intero loader.
+
+    desc: se passato, mostra una progress bar tqdm con questa descrizione.
+    """
     model.eval()  # spegne il dropout
     cm = torch.zeros((conf.N_CLASSES, conf.N_CLASSES), dtype=torch.long, device="cuda")
     loss_sum, n_pixels = 0.0, 0
-    for imgs, masks in loader:
+    for imgs, masks in tqdm(loader, desc=desc, disable=desc is None, dynamic_ncols=True, leave=False):
         imgs, masks = imgs.cuda(), masks.cuda().long()
         with torch.autocast("cuda", dtype=torch.float16):
             logits = model(imgs)
