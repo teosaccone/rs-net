@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
-import json
 from pathlib import Path
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
 from conf import ID_TO_TRAINID
+
+
 
 def get_output_shape(input_size: tuple, layer: nn.Module) -> tuple:
     """
@@ -57,3 +58,20 @@ def decode_segmap(mask_np: np.ndarray) -> np.ndarray:
     valid_mask = mask_np != 255
     rgb[valid_mask] = CITYSCAPES_PALETTE[mask_np[valid_mask]]
     return rgb
+
+
+def get_bilinear_kernel(in_channels: int, out_channels: int, kernel_size: int) -> torch.Tensor:
+    """Genera un kernel 2D per inizializzare ConvTranspose2d come upsampling bilineare."""
+    factor = (kernel_size + 1) // 2
+    center = factor - 1 if kernel_size % 2 == 1 else factor - 0.5
+
+    og = (
+        torch.arange(kernel_size, dtype=torch.float32).reshape(-1, 1),
+        torch.arange(kernel_size, dtype=torch.float32).reshape(1, -1),
+    )
+    filt = (1 - torch.abs(og[0] - center) / factor) * (1 - torch.abs(og[1] - center) / factor)
+
+    weight = torch.zeros((in_channels, out_channels, kernel_size, kernel_size), dtype=torch.float32)
+    channels = min(in_channels, out_channels)
+    weight[range(channels), range(channels), :, :] = filt
+    return weight

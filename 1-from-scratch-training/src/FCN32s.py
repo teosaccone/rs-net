@@ -18,6 +18,8 @@ from FCNHead32s import FCNHead32s
 from utils import decode_segmap, get_output_shape
 from VGGBackbone import VGGBackbone
 
+from torchvision.models import vgg16, VGG16_Weights
+
 
 def visualize_sample(img_tensor: torch.Tensor, mask_tensor: torch.Tensor):
     """Denormalizza un'immagine [3, H, W] e la mostra affiancata alla ground truth [H, W]."""
@@ -43,15 +45,24 @@ def visualize_sample(img_tensor: torch.Tensor, mask_tensor: torch.Tensor):
 
 class FCN32s(nn.Module):
     """Rete completa: backbone + head, collegate in forward."""
-    def __init__(self, n_class=conf.N_CLASSES):
+    def __init__(self, n_class=conf.N_CLASSES, pretrained: bool = True):
         super().__init__()
         self.backbone = VGGBackbone()
         self.head = FCNHead32s(n_class)
+
+        if pretrained:
+            self.load_pretrained_vgg16()
 
     def forward(self, x):
         h = self.head(self.backbone(x))
         # allinea la dimensione di uscita a quella dell'input
         return h[:, :, :x.size(2), :x.size(3)].contiguous()
+
+    def load_pretrained_vgg16(self):
+        """Scarica VGG16 pretrained e popola backbone e head."""
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        self.backbone.load_vgg16_weights(vgg)
+        self.head.copy_params_from_vgg16(vgg)
 
     def print_shapes(self, input_size=conf.INPUT_SIZE_CF):
         """
@@ -67,6 +78,8 @@ class FCN32s(nn.Module):
                 continue
             current_size = get_output_shape(current_size, layer)
             print(f"{name:<40} {current_size}")
+
+
 
 def check_dataset_and_forward(model: nn.Module):
     """Sanity check end-to-end: DataLoader -> Maschere -> Forward -> Loss."""
