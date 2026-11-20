@@ -1,24 +1,14 @@
-import torch
-import torch.nn as nn
-
-import conf
-from dataset import build_dataloaders
-from FCNHead32s import FCNHead32s
-from utils import get_output_shape
-from VGGBackbone import VGGBackbone
-
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
+from torchvision.models import vgg16, VGG16_Weights
 
 import conf
 from dataset import build_dataloaders
 from FCNHead32s import FCNHead32s
 from utils import decode_segmap, get_output_shape
 from VGGBackbone import VGGBackbone
-
-from torchvision.models import vgg16, VGG16_Weights
 
 
 def visualize_sample(img_tensor: torch.Tensor, mask_tensor: torch.Tensor):

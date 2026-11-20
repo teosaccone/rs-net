@@ -21,20 +21,15 @@ class CityscapeDataset(Dataset):
     def __len__(self) -> int:
         return len(self.images)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         img = np.array(Image.open(self.images[index]).convert("RGB"))
-        mask = np.array(Image.open(self.masks[index]))
-        mask = encode_mask(mask)
+        mask = encode_mask(np.array(Image.open(self.masks[index])))
 
         if self.transforms is not None:
-            transformed = self.transforms(image=img, mask=mask)
-            img_aug = transformed["image"]
-            mask_aug = transformed["mask"]
-        else:
-            img_aug = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
-            mask_aug = torch.from_numpy(mask)
+            out = self.transforms(image=img, mask=mask)
+            return out["image"], out["mask"]
+        return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0, torch.from_numpy(mask)
 
-        return img_aug, mask_aug
 
 def _collect_and_verify_split(img_dir: Path, gt_dir: Path) -> tuple[list[Path], list[Path]]:
     images = sorted(img_dir.rglob("*_leftImg8bit.png"))
@@ -44,57 +39,51 @@ def _collect_and_verify_split(img_dir: Path, gt_dir: Path) -> tuple[list[Path], 
     return images, masks
 
 
-def build_dataloaders(
-    root: Path = conf.DATA_ROOT,
-    batch_size: int = conf.BATCH_SIZE,
-    val_split: float = conf.VAL_SPLIT,
-    seed: int = conf.SEED,
-    height: int = conf.IMG_HEIGHT,
-    width: int = conf.IMG_WIDTH,
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    # 1. Raccolta percorsi train e test(val ufficiale di Cityscapes)
-    all_train_imgs, all_train_masks = _collect_and_verify_split(
-        root / "leftImg8bit" / "train",
-        root / "gtFine" / "train",
-    )
-    test_imgs, test_masks = _collect_and_verify_split(
-        root / "leftImg8bit" / "val",
-        root / "gtFine" / "val",
-    )
+def split_train_val_test(root: Path = conf.DATA_ROOT, val_split: float = conf.VAL_SPLIT, seed: int = conf.SEED):
+    """Restituisce (immagini, maschere) di train, val e test.
 
-    # 2. Split Train / Val disgiunto per città
-    groups = [p.parent.name for p in all_train_imgs]
+    Val = città del train ufficiale disgiunte dal nostro train; test = val ufficiale di Cityscapes.
+    """
+    imgs, masks = _collect_and_verify_split(root / "leftImg8bit" / "train", root / "gtFine" / "train")
+    test = _collect_and_verify_split(root / "leftImg8bit" / "val", root / "gtFine" / "val")
+
+    # Split disgiunto per città (evita leakage tra train e val)
+    groups = [p.parent.name for p in imgs]
     gss = GroupShuffleSplit(n_splits=1, test_size=val_split, random_state=seed)
-    train_idx, val_idx = next(gss.split(all_train_imgs, groups=groups))
+    train_idx, val_idx = next(gss.split(imgs, groups=groups))
+    train = ([imgs[i] for i in train_idx], [masks[i] for i in train_idx])
+    val = ([imgs[i] for i in val_idx], [masks[i] for i in val_idx])
 
-    train_imgs = [all_train_imgs[i] for i in train_idx]
-    train_masks = [all_train_masks[i] for i in train_idx]
-    val_imgs = [all_train_imgs[i] for i in val_idx]
-    val_masks = [all_train_masks[i] for i in val_idx]
-
-    assert {p.parent.name for p in train_imgs}.isdisjoint({p.parent.name for p in val_imgs}), (
+    assert {p.parent.name for p in train[0]}.isdisjoint({p.parent.name for p in val[0]}), (
         "Data leakage: città condivise tra train e validation!"
     )
+    return train, val, test
 
-    # 3. trasformazioni
-    train_tf = get_train_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height=height, width=width)
-    val_tf = get_val_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height=height, width=width)
 
-    # 4. Dataset e DataLoader
-    train_ds = CityscapeDataset(train_imgs, train_masks, transforms=train_tf)
-    val_ds = CityscapeDataset(val_imgs, val_masks, transforms=val_tf)
-    test_ds = CityscapeDataset(test_imgs, test_masks, transforms=val_tf)
-
+def make_loader(ds: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
     num_workers = min(8, os.cpu_count() or 1)
-    loader_kwargs = dict(
+    return DataLoader(
+        ds,
         batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=shuffle,  # nel train scartiamo l'ultimo batch incompleto
         num_workers=num_workers,
         pin_memory=True,
         persistent_workers=num_workers > 0,
+        generator=torch.Generator().manual_seed(conf.SEED),  # ordine di shuffle riproducibile
     )
 
-    train_dl = DataLoader(train_ds, shuffle=True, drop_last=True, **loader_kwargs)
-    val_dl = DataLoader(val_ds, shuffle=False, **loader_kwargs)
-    test_dl = DataLoader(test_ds, shuffle=False, **loader_kwargs)
 
-    return train_dl, val_dl, test_dl   
+def build_dataloaders(
+    batch_size: int = conf.BATCH_SIZE,
+    height: int = conf.IMG_HEIGHT,
+    width: int = conf.IMG_WIDTH,
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    train, val, test = split_train_val_test()
+    train_tf = get_train_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height, width)
+    val_tf = get_val_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height, width)
+    return (
+        make_loader(CityscapeDataset(*train, transforms=train_tf), batch_size, shuffle=True),
+        make_loader(CityscapeDataset(*val, transforms=val_tf), batch_size, shuffle=False),
+        make_loader(CityscapeDataset(*test, transforms=val_tf), batch_size, shuffle=False),
+    )

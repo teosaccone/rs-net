@@ -4,6 +4,7 @@ import numpy as np
 # Risale da .../rs-net/1-from-scratch-training/src/conf.py a .../rs-net
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = PROJECT_ROOT / "data" / "Cityscapes"
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
 N_CLASSES = 19
 INPUT_SIZE_CF = (1, 3, 512, 1024)
@@ -19,6 +20,9 @@ BATCH_SIZE = 8
 VAL_SPLIT = 0.2
 SEED = 42
 IGNORE_INDEX = 255
+
+# Crop di training (preso dopo il resize a IMG_HEIGHT x IMG_WIDTH): sta in 4 GB a batch 4
+CROP_SIZE = (256, 512)
 
 # Lookup table: indice = ID originale (0..33), valore = trainId (0..18) o 255
 ID_TO_TRAINID = np.array([

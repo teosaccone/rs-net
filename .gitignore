@@ -1,10 +1,22 @@
 # Ambienti e Cache
 __pycache__/
+*.pyc
 .venv/
 .ipcv_I2/
+.pytest_cache/
+
+# Test (restano solo in locale)
+tests/
 
 # Checkpoint e Pesi
 checkpoints/
+*.pth
+
+# Output, log e notebook
+outputs/
+runs/
+*.log
+.ipynb_checkpoints/
 
 # Data e Immagini
 data/

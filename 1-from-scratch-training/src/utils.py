@@ -1,12 +1,21 @@
+import random
+
+from pathlib import Path
+
+import numpy as np
 import torch
 import torch.nn as nn
-from pathlib import Path
-import numpy as np
-from PIL import Image
-from tqdm import tqdm
 
 from conf import ID_TO_TRAINID
 
+
+
+def seed_everything(seed: int) -> None:
+    """Fissa i seed di random, numpy e torch (CPU e GPU) per la riproducibilità."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def get_output_shape(input_size: tuple, layer: nn.Module) -> tuple:
