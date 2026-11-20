@@ -21,15 +21,12 @@ import torch.nn as nn
 
 import conf
 from dataset import CityscapeDataset, make_loader, split_train_val_test
-from engine import evaluate, train_one_epoch
-from FCN32s import FCN32s
+from engine import build_model, evaluate, train_one_epoch
 from transforms import get_train_transforms, get_val_transforms
-from utils import seed_everything
 
 # ------------------------------------------------------------------ parametri
 OUT_DIR = conf.OUTPUT_DIR / "babysitting"
 BATCH_SIZE = 4
-MOMENTUM = 0.9
 
 OVERFIT_IMAGES = 20
 OVERFIT_EPOCHS = 200
@@ -44,21 +41,10 @@ COARSE_TRIALS, COARSE_EPOCHS = 12, 2
 FINE_TRIALS, FINE_EPOCHS = 6, 5
 
 
-def new_model(lr: float, wd: float, dropout: bool = True):
-    """Modello pre-addestrato + SGD + GradScaler, sempre con lo stesso seed."""
-    seed_everything(conf.SEED)  # stessa inizializzazione per tutte le prove
-    model = FCN32s(pretrained=True).cuda()
-    if not dropout:
-        model.head.drop6.p = model.head.drop7.p = 0.0
-    params = [p for p in model.parameters() if p.requires_grad]  # upscore è congelato
-    optimizer = torch.optim.SGD(params, lr=lr, momentum=MOMENTUM, weight_decay=wd)
-    return model, optimizer, torch.amp.GradScaler("cuda")
-
-
 # ------------------------------------------------------------------ fase 1
 def check_initial_loss(batch, criterion) -> None:
     """Senza regolarizzazione loss ~ ln(19); aggiungendo L2 la loss deve salire."""
-    model, _, _ = new_model(lr=0.0, wd=0.0)
+    model, _, _ = build_model(lr=0.0, wd=0.0)
     model.eval()  # niente dropout
     imgs, masks = batch
     with torch.no_grad():
@@ -77,7 +63,7 @@ def overfit_small_subset(batches, criterion) -> None:
     Non arriva a 0: FCN32s ricostruisce l'output da una mappa a stride 32, i dettagli fini si perdono.
     """
     print(f"\n[2] Overfit su {OVERFIT_IMAGES} immagini")
-    model, optimizer, scaler = new_model(OVERFIT_LR, wd=0.0, dropout=False)
+    model, optimizer, scaler = build_model(OVERFIT_LR, wd=0.0, dropout=False)
     epoch_losses = []
     for epoch in range(1, OVERFIT_EPOCHS + 1):
         losses, exploded = train_one_epoch(model, batches, optimizer, scaler, criterion)
@@ -105,7 +91,7 @@ def find_learning_rate(train_dl, criterion) -> list[float]:
     good = []
     plt.figure()
     for lr in LR_CANDIDATES:
-        model, optimizer, scaler = new_model(lr, LR_SEARCH_WD)
+        model, optimizer, scaler = build_model(lr, LR_SEARCH_WD)
         train_dl.generator.manual_seed(conf.SEED)  # stesso ordine dei dati per ogni lr
         losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, max_steps=LR_SEARCH_STEPS)
 
@@ -137,7 +123,7 @@ def random_search(name, lr_exp, wd_exp, trials, epochs, train_dl, val_dl, criter
     for i in range(trials):
         lr = 10 ** rng.uniform(*lr_exp)
         wd = 10 ** rng.uniform(*wd_exp)
-        model, optimizer, scaler = new_model(lr, wd)
+        model, optimizer, scaler = build_model(lr, wd)
         train_dl.generator.manual_seed(conf.SEED)
 
         best_miou, ref_loss = 0.0, None

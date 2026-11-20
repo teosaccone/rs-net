@@ -78,9 +78,14 @@ def build_dataloaders(
     batch_size: int = conf.BATCH_SIZE,
     height: int = conf.IMG_HEIGHT,
     width: int = conf.IMG_WIDTH,
+    hflip: bool = False,
+    limit: int | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Loader di train, val e test. limit = numero massimo di immagini per split (per prove veloci)."""
     train, val, test = split_train_val_test()
-    train_tf = get_train_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height, width)
+    if limit is not None:
+        train, val, test = [(imgs[:limit], masks[:limit]) for imgs, masks in (train, val, test)]
+    train_tf = get_train_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height, width, hflip=hflip)
     val_tf = get_val_transforms(conf.IMAGENET_MEAN, conf.IMAGENET_STD, height, width)
     return (
         make_loader(CityscapeDataset(*train, transforms=train_tf), batch_size, shuffle=True),

@@ -1,20 +1,40 @@
-"""Un'epoca di training e la valutazione, con mixed precision (AMP) su GPU."""
+"""Costruzione del modello, un'epoca di training e la valutazione, con mixed precision (AMP) su GPU."""
 import math
 
-import numpy as np
 import torch
 
 import conf
-from metrics import confusion_matrix, mean_iou, pixel_accuracy
+from FCN32s import FCN32s
+from metrics import confusion_matrix, iou_per_class, mean_f1, mean_iou, pixel_accuracy
+from utils import seed_everything
 
 
-def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None, ref_loss=None):
-    """Restituisce (loss di ogni iterazione, esplosa?).
+def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.9):
+    """FCN32s pre-addestrata + SGD + GradScaler, sempre con lo stesso seed (stessa inizializzazione)."""
+    seed_everything(conf.SEED)
+    model = FCN32s(pretrained=True).cuda()
+    if not dropout:
+        model.head.drop6.p = model.head.drop7.p = 0.0
+    params = [p for p in model.parameters() if p.requires_grad]  # upscore è congelato
+    optimizer = torch.optim.SGD(params, lr=lr, momentum=momentum, weight_decay=wd)
+    return model, optimizer, torch.amp.GradScaler("cuda")
+
+
+def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None, ref_loss=None,
+                    scheduler=None, max_grad_norm=None, grad_norms=None, accum_steps=1):
+    """Restituisce (loss di ogni micro-batch, esplosa?).
 
     Si ferma se la loss diventa NaN o supera 3 volte la loss iniziale ref_loss (slide 9).
+    scheduler: se passato, la lr viene aggiornata a ogni passo dell'optimizer.
+    max_grad_norm: se passato, la norma del gradiente viene tagliata a questo valore.
+    grad_norms: se passata una lista, ci aggiunge la norma del gradiente (prima del taglio) di ogni passo.
+    accum_steps: gradient accumulation. I gradienti di accum_steps micro-batch si sommano e i pesi
+        si aggiornano una volta sola: equivale a un batch accum_steps volte più grande
+        (esattamente, perché la rete non ha BatchNorm). I micro-batch avanzati a fine epoca si scartano.
     """
     model.train()
     losses = []
+    optimizer.zero_grad()
     for step, (imgs, masks) in enumerate(loader):
         if step == max_steps:
             break
@@ -28,23 +48,50 @@ def train_one_epoch(model, loader, optimizer, scaler, criterion, max_steps=None,
         if not math.isfinite(losses[-1]) or losses[-1] > 3 * ref_loss:
             return losses, True
 
-        optimizer.zero_grad()
-        scaler.scale(loss).backward()  # loss scalata per evitare underflow dei gradienti in fp16
+        # loss divisa per accum_steps: la somma dei gradienti diventa la loro media sul batch effettivo.
+        # Scalata dall'AMP per evitare underflow dei gradienti in fp16.
+        scaler.scale(loss / accum_steps).backward()
+        if (step + 1) % accum_steps != 0:
+            continue  # accumula ancora, nessun aggiornamento dei pesi
+
+        if max_grad_norm is not None or grad_norms is not None:
+            # I gradienti sono ancora moltiplicati per la scala dell'AMP: prima si riportano
+            # al valore vero, poi se la loro norma supera max_grad_norm si riducono in proporzione.
+            # clip_grad_norm_ restituisce la norma PRIMA del taglio (con soglia inf non taglia nulla).
+            scaler.unscale_(optimizer)
+            norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm or float("inf"))
+            if grad_norms is not None:
+                grad_norms.append(norm.item())
         scaler.step(optimizer)
         scaler.update()
+        optimizer.zero_grad()
+        if scheduler is not None:
+            scheduler.step()
     return losses, False
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion) -> dict[str, float]:
-    """Loss media, mIoU e pixel accuracy sull'intero loader."""
+def evaluate(model, loader, criterion) -> dict:
+    """Loss media, mIoU, F1 medio, pixel accuracy e IoU per classe sull'intero loader."""
     model.eval()  # spegne il dropout
     cm = torch.zeros((conf.N_CLASSES, conf.N_CLASSES), dtype=torch.long, device="cuda")
-    losses = []
+    loss_sum, n_pixels = 0.0, 0
     for imgs, masks in loader:
         imgs, masks = imgs.cuda(), masks.cuda().long()
         with torch.autocast("cuda", dtype=torch.float16):
             logits = model(imgs)
-        losses.append(criterion(logits.float(), masks).item())
+        # La CE del batch è una media sui suoi pixel validi: la ripesiamo per il loro numero,
+        # così ogni pixel conta uguale (anche quelli dell'ultimo batch, più piccolo)
+        n_valid = int((masks != conf.IGNORE_INDEX).sum())
+        if n_valid > 0:
+            loss_sum += criterion(logits.float(), masks).item() * n_valid
+            n_pixels += n_valid
         cm += confusion_matrix(logits.argmax(dim=1), masks, conf.N_CLASSES, conf.IGNORE_INDEX)
-    return {"loss": float(np.mean(losses)), "miou": mean_iou(cm), "pixel_acc": pixel_accuracy(cm)}
+    return {
+        "loss": loss_sum / max(n_pixels, 1),
+        "miou": mean_iou(cm),
+        "f1": mean_f1(cm),
+        "pixel_acc": pixel_accuracy(cm),
+        "iou_per_class": iou_per_class(cm).tolist(),
+        "confusion_matrix": cm.tolist(),  # cm[vera][predetta], conteggi di pixel
+    }

@@ -1,12 +1,21 @@
+import os
 from pathlib import Path
 import numpy as np
 
 # Risale da .../rs-net/1-from-scratch-training/src/conf.py a .../rs-net
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_ROOT = PROJECT_ROOT / "data" / "Cityscapes"
-OUTPUT_DIR = PROJECT_ROOT / "outputs"
+
+# Percorsi: in locale i default, su Kaggle si impostano le variabili d'ambiente
+# (DATA_ROOT=/kaggle/input/..., OUTPUT_DIR=/kaggle/working/outputs)
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", PROJECT_ROOT / "data" / "Cityscapes"))
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 
 N_CLASSES = 19
+CLASS_NAMES = [
+    "road", "sidewalk", "building", "wall", "fence", "pole", "traffic light",
+    "traffic sign", "vegetation", "terrain", "sky", "person", "rider", "car",
+    "truck", "bus", "train", "motorcycle", "bicycle",
+]
 INPUT_SIZE_CF = (1, 3, 512, 1024)
 
 
