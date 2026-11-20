@@ -18,6 +18,10 @@ class FCNHead32s(nn.Module):
         self.upscore = nn.ConvTranspose2d(n_class, n_class, kernel_size=64,
                                           stride=32, bias=False, padding=16)
 
+        # Init di score_fr (zeri) e upscore (bilineare congelato). Va fatta qui:
+        # copy_params_from_vgg16 tocca solo fc6/fc7, quindi non la sovrascrive.
+        self._initialize_weights()
+
     def forward(self, x):
         h = self.drop6(F.relu(self.fc6(x)))
         h = self.drop7(F.relu(self.fc7(h)))
