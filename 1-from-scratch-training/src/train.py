@@ -20,7 +20,6 @@ matplotlib.use("Agg")  # salva i grafici su file senza aprire finestre
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
 
 import conf
 from dataset import build_dataloaders
@@ -43,7 +42,8 @@ BATCH_SIZE = 8 if ON_KAGGLE else 2   # immagini per micro-batch (quelle che stan
 ACCUM_STEPS = 1 if ON_KAGGLE else 4
 EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 
-# (lr, wd) per batch effettivo 8, presi dal babysitting di ogni rete.
+# (lr, wd, dice_weight) per (modello, loss), batch effettivo 8, presi dal babysitting.
+# dice_weight = peso lambda del Dice nella loss CE + lambda * Dice (0 per la sola CE).
 # fcn32s: babysitting a batch 4 (outputs/babysitting/best_hparams.json: lr 1.64e-3, wd 6.65e-4),
 #   lr portata a batch 8 con la regola della radice: lr proporzionale a sqrt(batch). Più prudente della
 #   regola lineare (che darebbe 3.3e-3, già nella zona in cui la coarse peggiorava).
@@ -52,11 +52,13 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   nella random search fine tutte le prove con lr 1.4e-3..5.9e-3 e wd 2e-4..2e-3 danno mIoU
 #   0.518-0.526 (differenze = rumore); con lr 2.31e-3 mIoU 0.522, alla pari con la migliore
 #   (lr 5.01e-3, wd 2.16e-4: 0.526, scartata perché cambierebbe la ricetta rispetto alla run A).
+# fcn16s + ce_dice: da babysitting (outputs/babysitting_fcn16s_ce_dice/). None finché non è fatto.
 HPARAMS = {
-    "fcn32s": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4),
-    "fcn16s": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4),
+    ("fcn32s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
+    ("fcn16s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
+    ("fcn16s", "ce_dice"): (None, None, None),
 }
-LR, WD = HPARAMS[conf.MODEL]
+LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
 # (batch effettivo 8, lr 2.3e-3): mediana 2.7, 99° percentile 6.6-7.5. Con 7 si taglia ~1% dei passi
 # (solo i picchi, soprattutto all'inizio): la dinamica trovata col babysitting resta quasi intatta.
@@ -74,7 +76,7 @@ def save_history(history: list[dict]) -> None:
     fig, (ax_loss, ax_miou, ax_lr) = plt.subplots(1, 3, figsize=(15, 4))
     ax_loss.plot(epochs, [h["train_loss"] for h in history], marker=".", label="train")
     ax_loss.plot(epochs, [h["val_loss"] for h in history], marker=".", label="val")
-    ax_loss.set(xlabel="epoca", ylabel="loss (cross-entropy)", title="Loss")
+    ax_loss.set(xlabel="epoca", ylabel=f"loss ({conf.LOSS})", title="Loss")
     ax_loss.legend()
     ax_miou.plot(epochs, [h["train_miou"] for h in history], marker=".", label="train")
     ax_miou.plot(epochs, [h["val_miou"] for h in history], marker=".", label="val")
@@ -115,10 +117,10 @@ def save_checkpoint(state: dict) -> None:
     os.replace(tmp, OUT_DIR / "last.pth")
 
 
-def test_best_model(model, test_dl, criterion) -> None:
+def test_best_model(model, test_dl) -> None:
     """Valuta UNA volta sul test set il modello col miglior mIoU di validazione."""
     model.load_state_dict(torch.load(OUT_DIR / "best.pth"))
-    test = evaluate(model, test_dl, criterion, desc="test")
+    test = evaluate(model, test_dl, DICE_WEIGHT, desc="test")
     print(f"\nTest: mIoU {test['miou']:.4f} | F1 {test['f1']:.4f} | pixel acc {test['pixel_acc']:.4f}")
     for name, iou in zip(conf.CLASS_NAMES, test["iou_per_class"]):
         print(f"    {name:15s} IoU {iou:.3f}")
@@ -127,12 +129,11 @@ def test_best_model(model, test_dl, criterion) -> None:
 
 
 def main() -> None:
-    assert LR is not None, f"Manca la lr di {conf.MODEL} in HPARAMS: fai prima il babysitting"
-    assert conf.LOSS == "ce", "Per ora è implementata solo la cross-entropy"
+    assert LR is not None, f"Mancano gli iperparametri di {conf.MODEL} + {conf.LOSS} in HPARAMS: fai prima il babysitting"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | dati: {conf.DATA_ROOT} | output: {OUT_DIR} | DEBUG={DEBUG}")
     print(f"{EPOCHS} epoche, batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli = {EFFECTIVE_BATCH}, "
-          f"lr {LR:.2e}, wd {WD:.2e}")
+          f"lr {LR:.2e}, wd {WD:.2e}, peso Dice {DICE_WEIGHT:g}")
 
     train_dl, val_dl, test_dl = build_dataloaders(BATCH_SIZE, augment=True, limit=DEBUG_IMAGES if DEBUG else None)
     model, optimizer, scaler = build_model(LR, WD)
@@ -140,7 +141,6 @@ def main() -> None:
     # Con l'accumulo i passi sono len(train_dl) // ACCUM_STEPS per epoca, non len(train_dl).
     total_iters = EPOCHS * (len(train_dl) // ACCUM_STEPS)
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, total_iters=total_iters, power=0.9)
-    criterion = nn.CrossEntropyLoss(ignore_index=conf.IGNORE_INDEX)
 
     history, best_miou, ref_loss, start_epoch = [], -1.0, None, 1
     if RESUME:
@@ -164,7 +164,7 @@ def main() -> None:
         # Attenzione: è su immagini aumentate, con il dropout attivo e con i pesi che cambiano
         # durante l'epoca, quindi è un po' pessimista rispetto al mIoU di val.
         train_cm = torch.zeros((conf.N_CLASSES, conf.N_CLASSES), dtype=torch.long, device="cuda")
-        losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, ref_loss=ref_loss,
+        losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, DICE_WEIGHT, ref_loss=ref_loss,
                                            scheduler=scheduler, max_grad_norm=MAX_GRAD_NORM, grad_norms=grad_norms,
                                            accum_steps=ACCUM_STEPS, cm=train_cm,
                                            desc=f"epoca {epoch}/{EPOCHS} train")
@@ -172,7 +172,7 @@ def main() -> None:
         if exploded:
             print("Loss esplosa: abbassa la LR.")
             break
-        val = evaluate(model, val_dl, criterion, desc=f"epoca {epoch}/{EPOCHS} val")
+        val = evaluate(model, val_dl, DICE_WEIGHT, desc=f"epoca {epoch}/{EPOCHS} val")
         gn = summarize_grad_norms(grad_norms)
 
         history.append({"epoch": epoch, "lr": lr, "train_loss": float(np.mean(losses)),
@@ -195,7 +195,7 @@ def main() -> None:
     if best_miou < 0:  # nessuna epoca completata (es. loss esplosa alla prima): niente da testare
         print("Nessun modello salvato in questo run: salto il test.")
         return
-    test_best_model(model, test_dl, criterion)
+    test_best_model(model, test_dl)
 
 
 if __name__ == "__main__":
