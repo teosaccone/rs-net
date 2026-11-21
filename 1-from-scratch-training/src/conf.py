@@ -10,6 +10,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", PROJECT_ROOT / "data" / "Cityscapes"))
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 
+# Rete e loss usate da train.py e babysitting.py (danno anche il nome alla cartella di output)
+MODEL = "fcn16s"  # "fcn32s" oppure "fcn16s"
+LOSS = "ce"       # per ora solo "ce" (cross-entropy)
+
 N_CLASSES = 19
 CLASS_NAMES = [
     "road", "sidewalk", "building", "wall", "fence", "pole", "traffic light",

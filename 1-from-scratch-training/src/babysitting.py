@@ -1,4 +1,4 @@
-"""Babysitting del training di FCN32s (slide cs231n "Training Neural Networks part 2").
+"""Babysitting del training della rete scelta in conf.MODEL (slide cs231n "Training Neural Networks part 2").
 
 Esegue in ordine:
   1. check della loss iniziale
@@ -6,7 +6,11 @@ Esegue in ordine:
   3. ricerca della lr con regolarizzazione piccola
   4. random search coarse, poi fine sull'intervallo ristretto
 
-Uso: python babysitting.py   (i risultati vanno in outputs/babysitting/)
+Uso: python babysitting.py   (i risultati vanno in outputs/babysitting_<modello>/)
+
+Fasi 3-4 a batch effettivo 8 (micro-batch 4 x accumulo 2), lo stesso di train.py:
+lr e wd trovati si usano nel training così come sono, senza regola della radice.
+(la prima versione, per la 32s, era a batch 4 senza accumulo: risultati in outputs/babysitting/)
 """
 import json
 import math
@@ -25,8 +29,9 @@ from engine import build_model, evaluate, train_one_epoch
 from transforms import get_train_transforms, get_val_transforms
 
 # ------------------------------------------------------------------ parametri
-OUT_DIR = conf.OUTPUT_DIR / "babysitting"
-BATCH_SIZE = 4
+OUT_DIR = conf.OUTPUT_DIR / f"babysitting_{conf.MODEL}"
+BATCH_SIZE = 4   # immagini per micro-batch (crop 256x512: stanno in 4 GB)
+ACCUM_STEPS = 2  # fasi 3-4: 4 x 2 = batch effettivo 8, come in train.py
 
 OVERFIT_IMAGES = 20
 OVERFIT_EPOCHS = 200
@@ -34,7 +39,7 @@ OVERFIT_LR = 1e-3
 
 LR_CANDIDATES = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 LR_SEARCH_WD = 1e-6   # regolarizzazione piccola
-LR_SEARCH_STEPS = 300
+LR_SEARCH_STEPS = 600  # micro-batch: con l'accumulo x2 sono 300 aggiornamenti dei pesi
 
 WD_EXP = (-6, -2)     # weight decay = 10^U(-6, -2) nella fase coarse
 COARSE_TRIALS, COARSE_EPOCHS = 12, 2
@@ -60,7 +65,7 @@ def check_initial_loss(batch, criterion) -> None:
 def overfit_small_subset(batches, criterion) -> None:
     """Niente regolarizzazione (wd = 0, dropout spento): la loss deve scendere molto.
 
-    Non arriva a 0: FCN32s ricostruisce l'output da una mappa a stride 32, i dettagli fini si perdono.
+    Non arriva a 0: la rete ricostruisce l'output da mappe a stride 32 (16 con lo skip della 16s), i dettagli fini si perdono.
     """
     print(f"\n[2] Overfit su {OVERFIT_IMAGES} immagini")
     model, optimizer, scaler = build_model(OVERFIT_LR, wd=0.0, dropout=False)
@@ -93,7 +98,8 @@ def find_learning_rate(train_dl, criterion) -> list[float]:
     for lr in LR_CANDIDATES:
         model, optimizer, scaler = build_model(lr, LR_SEARCH_WD)
         train_dl.generator.manual_seed(conf.SEED)  # stesso ordine dei dati per ogni lr
-        losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, max_steps=LR_SEARCH_STEPS)
+        losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, max_steps=LR_SEARCH_STEPS,
+                                           accum_steps=ACCUM_STEPS)
 
         if exploded:
             verdict = "esplode (troppo alta)"
@@ -128,7 +134,8 @@ def random_search(name, lr_exp, wd_exp, trials, epochs, train_dl, val_dl, criter
 
         best_miou, ref_loss = 0.0, None
         for _ in range(epochs):
-            losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, ref_loss=ref_loss)
+            losses, exploded = train_one_epoch(model, train_dl, optimizer, scaler, criterion, ref_loss=ref_loss,
+                                               accum_steps=ACCUM_STEPS)
             ref_loss = ref_loss or losses[0]
             if exploded:
                 break
@@ -160,6 +167,7 @@ def narrow_range(results: list[dict], key: str, top_k: int = 3) -> tuple[float, 
 # ------------------------------------------------------------------ main
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Modello: {conf.MODEL} | batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli | output: {OUT_DIR}")
     criterion = nn.CrossEntropyLoss(ignore_index=conf.IGNORE_INDEX)
     mean, std = conf.IMAGENET_MEAN, conf.IMAGENET_STD
     train, val, _ = split_train_val_test()

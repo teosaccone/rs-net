@@ -44,7 +44,8 @@ class FCN32s(nn.Module):
             self.load_pretrained_vgg16()
 
     def forward(self, x):
-        h = self.head(self.backbone(x))
+        _, pool5 = self.backbone(x)  # la 32s usa solo pool5 (pool4 serve alla 16s)
+        h = self.head(pool5)
         # allinea la dimensione di uscita a quella dell'input
         return h[:, :, :x.size(2), :x.size(3)].contiguous()
 

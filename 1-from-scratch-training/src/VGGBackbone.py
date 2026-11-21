@@ -21,14 +21,23 @@ def make_vgg_features(cfg=VGG16_CFG):
     return nn.Sequential(*layers)
 
 
+# Indice in self.features subito dopo il 4° maxpool: features[:24] finisce con pool4.
+# (ogni blocco è conv+ReLU ripetuti + un maxpool; il 4° maxpool è all'indice 23)
+POOL4_END = 24
+
+
 class VGGBackbone(nn.Module):
-    """Backbone VGG16 senza il classificatore: restituisce pool5 (stride 32)."""
+    """Backbone VGG16 senza il classificatore: restituisce pool4 (stride 16) e pool5 (stride 32)."""
     def __init__(self):
         super().__init__()
         self.features = make_vgg_features()
 
     def forward(self, x):
-        return self.features(x)
+        # Stessi layer di sempre, eseguiti in due pezzi per leggere anche il risultato intermedio.
+        # self.features resta un unico Sequential: i nomi dei pesi (features.N) non cambiano.
+        pool4 = self.features[:POOL4_END](x)
+        pool5 = self.features[POOL4_END:](pool4)
+        return pool4, pool5
 
     def load_vgg16_weights(self, vgg16_model: nn.Module):
         """Copia i pesi convoluzionali da vgg16.features."""

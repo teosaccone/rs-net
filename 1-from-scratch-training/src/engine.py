@@ -5,18 +5,23 @@ import torch
 from tqdm import tqdm
 
 import conf
+from FCN16s import FCN16s
 from FCN32s import FCN32s
 from metrics import confusion_matrix, iou_per_class, mean_f1, mean_iou, pixel_accuracy
 from utils import seed_everything
 
+# Nome (come in conf.MODEL) -> classe della rete
+MODELS = {"fcn32s": FCN32s, "fcn16s": FCN16s}
 
-def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.9):
-    """FCN32s pre-addestrata + SGD + GradScaler, sempre con lo stesso seed (stessa inizializzazione)."""
+
+def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.9,
+                model_name: str = conf.MODEL):
+    """Rete pre-addestrata + SGD + GradScaler, sempre con lo stesso seed (stessa inizializzazione)."""
     seed_everything(conf.SEED)
-    model = FCN32s(pretrained=True).cuda()
+    model = MODELS[model_name](pretrained=True).cuda()
     if not dropout:
         model.head.drop6.p = model.head.drop7.p = 0.0
-    params = [p for p in model.parameters() if p.requires_grad]  # upscore è congelato
+    params = [p for p in model.parameters() if p.requires_grad]  # gli upsampling congelati restano fuori
     optimizer = torch.optim.SGD(params, lr=lr, momentum=momentum, weight_decay=wd)
     return model, optimizer, torch.amp.GradScaler("cuda")
 

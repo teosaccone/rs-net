@@ -1,11 +1,13 @@
-"""Training di FCN32s su Cityscapes (pensato per Kaggle).
+"""Training su Cityscapes della rete scelta in conf.MODEL (fcn32s o fcn16s).
 
 Uso:
   python train.py              training completo
   DEBUG=1 python train.py      prova veloce: poche immagini, 1 epoca
-  RESUME=1 python train.py     riprende un run interrotto da OUTPUT_DIR/train/last.pth
+  RESUME=1 python train.py     riprende un run interrotto da OUT_DIR/last.pth
 
-Output in OUTPUT_DIR/train/ (train_debug/ in DEBUG): log.csv, curves.png, best.pth, last.pth, test_metrics.json
+Output in OUTPUT_DIR/<modello>_<loss>/ (es. fcn16s_ce/; con DEBUG fcn16s_ce_debug/):
+log.csv, curves.png, best.pth, last.pth, test_metrics.json
+(la run A della 32s, fatta prima di questa modifica, è in OUTPUT_DIR/train/)
 """
 import csv
 import json
@@ -28,7 +30,8 @@ from metrics import mean_iou
 # ------------------------------------------------------------------ parametri
 DEBUG = os.environ.get("DEBUG") == "1"
 RESUME = os.environ.get("RESUME") == "1"  # esplicito: un run nuovo non riprende per sbaglio da uno vecchio
-OUT_DIR = conf.OUTPUT_DIR / ("train_debug" if DEBUG else "train")  # la prova non sovrascrive il run vero
+RUN_NAME = f"{conf.MODEL}_{conf.LOSS}"
+OUT_DIR = conf.OUTPUT_DIR / (RUN_NAME + "_debug" if DEBUG else RUN_NAME)  # la prova non sovrascrive il run vero
 
 EPOCHS = 1 if DEBUG else 80
 DEBUG_IMAGES = 80  # in DEBUG: 40 micro-batch = 10 passi dell'optimizer
@@ -40,13 +43,17 @@ BATCH_SIZE = 8 if ON_KAGGLE else 2   # immagini per micro-batch (quelle che stan
 ACCUM_STEPS = 1 if ON_KAGGLE else 4
 EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 
-# Migliori valori della random search fine (outputs/babysitting/best_hparams.json, trovati con batch 4)
-BEST_LR = 1.64e-3
-BEST_WD = 6.65e-4
-# Regola della radice: lr proporzionale a sqrt(batch). Più prudente della regola lineare
-# (che con batch 8 darebbe 3.3e-3, già nella zona in cui la coarse peggiorava)
-LR = BEST_LR * (EFFECTIVE_BATCH / 4) ** 0.5
-WD = BEST_WD
+# (lr, wd) per batch effettivo 8, presi dal babysitting di ogni rete.
+# fcn32s: babysitting a batch 4 (outputs/babysitting/best_hparams.json: lr 1.64e-3, wd 6.65e-4),
+#   lr portata a batch 8 con la regola della radice: lr proporzionale a sqrt(batch). Più prudente della
+#   regola lineare (che darebbe 3.3e-3, già nella zona in cui la coarse peggiorava).
+# fcn16s: babysitting già a batch effettivo 8 (outputs/babysitting_fcn16s/best_hparams.json),
+#   valori da usare così come sono. None finché il babysitting non è fatto.
+HPARAMS = {
+    "fcn32s": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4),
+    "fcn16s": (None, None),
+}
+LR, WD = HPARAMS[conf.MODEL]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
 # (batch effettivo 8, lr 2.3e-3): mediana 2.7, 99° percentile 6.6-7.5. Con 7 si taglia ~1% dei passi
 # (solo i picchi, soprattutto all'inizio): la dinamica trovata col babysitting resta quasi intatta.
@@ -117,8 +124,10 @@ def test_best_model(model, test_dl, criterion) -> None:
 
 
 def main() -> None:
+    assert LR is not None, f"Manca la lr di {conf.MODEL} in HPARAMS: fai prima il babysitting"
+    assert conf.LOSS == "ce", "Per ora è implementata solo la cross-entropy"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Dati: {conf.DATA_ROOT} | output: {OUT_DIR} | DEBUG={DEBUG}")
+    print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | dati: {conf.DATA_ROOT} | output: {OUT_DIR} | DEBUG={DEBUG}")
     print(f"{EPOCHS} epoche, batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli = {EFFECTIVE_BATCH}, "
           f"lr {LR:.2e}, wd {WD:.2e}")
 
