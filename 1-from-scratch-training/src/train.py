@@ -47,11 +47,14 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 # fcn32s: babysitting a batch 4 (outputs/babysitting/best_hparams.json: lr 1.64e-3, wd 6.65e-4),
 #   lr portata a batch 8 con la regola della radice: lr proporzionale a sqrt(batch). Più prudente della
 #   regola lineare (che darebbe 3.3e-3, già nella zona in cui la coarse peggiorava).
-# fcn16s: babysitting già a batch effettivo 8 (outputs/babysitting_fcn16s/best_hparams.json),
-#   valori da usare così come sono. None finché il babysitting non è fatto.
+# fcn16s: stessa ricetta della 32s, per un confronto in cui cambia solo l'architettura.
+#   Il babysitting della 16s (già a batch effettivo 8, outputs/babysitting_fcn16s/) lo conferma:
+#   nella random search fine tutte le prove con lr 1.4e-3..5.9e-3 e wd 2e-4..2e-3 danno mIoU
+#   0.518-0.526 (differenze = rumore); con lr 2.31e-3 mIoU 0.522, alla pari con la migliore
+#   (lr 5.01e-3, wd 2.16e-4: 0.526, scartata perché cambierebbe la ricetta rispetto alla run A).
 HPARAMS = {
     "fcn32s": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4),
-    "fcn16s": (None, None),
+    "fcn16s": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4),
 }
 LR, WD = HPARAMS[conf.MODEL]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
