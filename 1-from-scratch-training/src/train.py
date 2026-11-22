@@ -57,6 +57,10 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   lr 3e-3..4e-3 e peso Dice 0.67..4.6 danno 0.537-0.544 (rumore); la migliore (lr 4.0e-3, wd 6.47e-4,
 #   peso 0.67) ha wd quasi uguale alla run A. Lr più alte vincono in 5 epoche anche con la sola CE
 #   (16s: 5.0e-3 migliore nella fine), quindi non è un motivo per cambiare la ricetta.
+#   Peso Dice confermato da dice_weight_test.py (lr e wd fissi, 5 epoche, outputs/dice_weight_test_fcn16s/):
+#   mIoU 0 -> 0.519, 0.5 -> 0.526, 1 -> 0.541, 2 -> 0.532, 4 -> 0.528. Con 1 le classi piccole passano da
+#   sotto-predette (pixel predetti / veri: pole 0.62, traffic light 0.43) a ~1; con 2-4 diventano
+#   sovra-predette (rider 1.75, motorcycle 2.16 con 4) e l'IoU cala.
 HPARAMS = {
     ("fcn32s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
     ("fcn16s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
