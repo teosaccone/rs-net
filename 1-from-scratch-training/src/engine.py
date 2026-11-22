@@ -8,11 +8,12 @@ from tqdm import tqdm
 import conf
 from FCN16s import FCN16s
 from FCN32s import FCN32s
+from FCN8s import FCN8s
 from metrics import confusion_matrix, iou_per_class, mean_f1, mean_iou, pixel_accuracy
 from utils import seed_everything
 
 # Nome (come in conf.MODEL) -> classe della rete
-MODELS = {"fcn32s": FCN32s, "fcn16s": FCN16s}
+MODELS = {"fcn32s": FCN32s, "fcn16s": FCN16s, "fcn8s": FCN8s}
 
 
 def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.9,

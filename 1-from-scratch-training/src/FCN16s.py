@@ -33,7 +33,7 @@ class FCN16s(nn.Module):
             self.load_pretrained_vgg16()
 
     def forward(self, x):
-        pool4, pool5 = self.backbone(x)
+        _, pool4, pool5 = self.backbone(x)  # pool3 serve solo alla 8s
         h = self.upscore2(self.head(pool5))  # uscita "da 32s", ingrandita ×2
         p4 = self.score_pool4(pool4)
         # Con dimensioni non divisibili per 32 (ceil_mode) h può essere 1 pixel più grande: si ritaglia
@@ -62,7 +62,7 @@ class FCN16s(nn.Module):
 def main():
     model = FCN16s()
     x = torch.zeros(conf.INPUT_SIZE_CF)
-    pool4, pool5 = model.backbone(x)
+    _, pool4, pool5 = model.backbone(x)
     print(f"pool4: {tuple(pool4.shape)} | pool5: {tuple(pool5.shape)} | output: {tuple(model(x).shape)}")
 
     # Controlli sul dataset reale

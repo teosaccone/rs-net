@@ -61,10 +61,14 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   mIoU 0 -> 0.519, 0.5 -> 0.526, 1 -> 0.541, 2 -> 0.532, 4 -> 0.528. Con 1 le classi piccole passano da
 #   sotto-predette (pixel predetti / veri: pole 0.62, traffic light 0.43) a ~1; con 2-4 diventano
 #   sovra-predette (rider 1.75, motorcycle 2.16 con 4) e l'IoU cala.
+# fcn8s: stessa ricetta della 16s (si allena con la loss migliore tra run B e run D), senza random search:
+#   solo loss iniziale, overfit, DEBUG e misura della norma del gradiente prima del run lungo.
 HPARAMS = {
     ("fcn32s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
     ("fcn16s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
     ("fcn16s", "ce_dice"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0),
+    ("fcn8s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
+    ("fcn8s", "ce_dice"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0),
 }
 LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
