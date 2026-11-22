@@ -52,16 +52,22 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   nella random search fine tutte le prove con lr 1.4e-3..5.9e-3 e wd 2e-4..2e-3 danno mIoU
 #   0.518-0.526 (differenze = rumore); con lr 2.31e-3 mIoU 0.522, alla pari con la migliore
 #   (lr 5.01e-3, wd 2.16e-4: 0.526, scartata perché cambierebbe la ricetta rispetto alla run A).
-# fcn16s + ce_dice: da babysitting (outputs/babysitting_fcn16s_ce_dice/). None finché non è fatto.
+# fcn16s + ce_dice: stessa lr e wd della run B, peso Dice 1 (CE e Dice 1:1), così cambia solo la loss.
+#   Babysitting (batch effettivo 8, outputs/babysitting_fcn16s_ce_dice/): nella fine le prove con
+#   lr 3e-3..4e-3 e peso Dice 0.67..4.6 danno 0.537-0.544 (rumore); la migliore (lr 4.0e-3, wd 6.47e-4,
+#   peso 0.67) ha wd quasi uguale alla run A. Lr più alte vincono in 5 epoche anche con la sola CE
+#   (16s: 5.0e-3 migliore nella fine), quindi non è un motivo per cambiare la ricetta.
 HPARAMS = {
     ("fcn32s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
     ("fcn16s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
-    ("fcn16s", "ce_dice"): (None, None, None),
+    ("fcn16s", "ce_dice"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0),
 }
 LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
 # (batch effettivo 8, lr 2.3e-3): mediana 2.7, 99° percentile 6.6-7.5. Con 7 si taglia ~1% dei passi
 # (solo i picchi, soprattutto all'inizio): la dinamica trovata col babysitting resta quasi intatta.
+# 16s + CE + Dice (misurato, 150 passi senza clipping): passi 1-50 mediana 3.7, p99 10 (sopra 7: 16%);
+# passi 51-150 mediana 3.2, p99 6.0 (sopra 7: 1%). Stesso comportamento della CE: si tiene 7.
 MAX_GRAD_NORM = 7.0
 
 
