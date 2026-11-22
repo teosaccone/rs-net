@@ -5,6 +5,7 @@ Uso: python figures.py   (risultati in outputs/figures/)
 Produce:
   val_miou.png            mIoU di validazione per epoca, tutte le run sovrapposte
   iou_per_class.png       IoU di test per classe, run affiancate
+  recall_pred_gt.png      per classe: recall e pixel predetti / pixel veri (sotto 1 = classe sotto-predetta)
   confusion_<run>.png     confusion matrix di test normalizzata per riga (diagonale = recall)
   qualitative.png         immagine | ground truth | predizione di ogni run, su immagini di test
   qualitative_zoom.png    come sopra, ritagliato sulla zona con più pali/semafori/cartelli
@@ -36,6 +37,7 @@ OUT_DIR = conf.OUTPUT_DIR / "figures"
 RUNS = {
     "FCN-32s": ("fcn32s", conf.OUTPUT_DIR / "train"),  # run A (cartella con il nome vecchio)
     "FCN-16s": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce"),
+    "FCN-16s + Dice": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce_dice"),  # run D: loss CE + Dice
 }
 # Un colore fisso per run (palette categoriale: blu, arancio, acqua, giallo)
 RUN_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
@@ -90,6 +92,34 @@ def plot_iou_per_class(metrics: dict[str, dict]) -> None:
     plt.close(fig)
 
 
+def plot_recall_pred_gt(metrics: dict[str, dict]) -> None:
+    """Per classe, una barra per run: recall (sopra) e pixel predetti / pixel veri (sotto).
+
+    pred/gt < 1: la rete disegna la classe meno di quanto c'è davvero (sotto-predetta), > 1: troppo.
+    Serve a vedere l'effetto del Dice sulle classi piccole, che la sola CE sotto-predice.
+    """
+    n_runs = len(metrics)
+    width = 0.8 / n_runs
+    x = np.arange(conf.N_CLASSES)
+    fig, (ax_rec, ax_ratio) = plt.subplots(2, 1, figsize=(12, 7.5), sharex=True)
+    for i, ((name, m), color) in enumerate(zip(metrics.items(), RUN_COLORS)):
+        cm = np.array(m["confusion_matrix"], dtype=float)  # cm[vera][predetta]
+        tp, gt, pred = np.diag(cm), cm.sum(axis=1), cm.sum(axis=0)
+        offset = (i - (n_runs - 1) / 2) * width
+        ax_rec.bar(x + offset, tp / gt, width * 0.9, color=color, label=name)
+        ax_ratio.bar(x + offset, pred / gt, width * 0.9, color=color, label=name)
+    ax_rec.set(ylabel="recall di test", ylim=(0, 1.15), title="Recall e pixel predetti / pixel veri per classe (test)")
+    ax_ratio.axhline(1.0, color="black", linewidth=1)  # 1 = la classe è predetta tanto quanto c'è
+    ax_ratio.set(ylabel="pixel predetti / pixel veri")
+    ax_ratio.set_xticks(x, conf.CLASS_NAMES, rotation=45, ha="right")
+    for ax in (ax_rec, ax_ratio):
+        ax.grid(axis="y", alpha=0.3)
+    ax_rec.legend(ncol=n_runs, loc="upper center")  # in una riga sopra le barre (che arrivano a 1)
+    fig.tight_layout()
+    fig.savefig(OUT_DIR / "recall_pred_gt.png", dpi=150)
+    plt.close(fig)
+
+
 def plot_confusion(name: str, m: dict) -> None:
     """Confusion matrix normalizzata per riga: riga = classe vera, colonna = classe predetta."""
     cm = np.array(m["confusion_matrix"], dtype=float)
@@ -108,7 +138,8 @@ def plot_confusion(name: str, m: dict) -> None:
            title=f"{name}: confusion matrix di test normalizzata per riga (mIoU {m['miou']:.3f})")
     fig.colorbar(im, ax=ax, fraction=0.046)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"confusion_{name.lower().replace('-', '')}.png", dpi=150)
+    # Nome del file dal nome della run: "FCN-16s + Dice" -> confusion_fcn16s_dice.png
+    fig.savefig(OUT_DIR / f"confusion_{name.lower().replace('-', '').replace(' + ', '_')}.png", dpi=150)
     plt.close(fig)
 
 
@@ -184,6 +215,7 @@ def main() -> None:
     plot_val_miou()
     metrics = load_test_metrics()
     plot_iou_per_class(metrics)
+    plot_recall_pred_gt(metrics)
     for name, m in metrics.items():
         plot_confusion(name, m)
 
