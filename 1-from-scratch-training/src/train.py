@@ -76,6 +76,9 @@ LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
 # (solo i picchi, soprattutto all'inizio): la dinamica trovata col babysitting resta quasi intatta.
 # 16s + CE + Dice (misurato, 150 passi senza clipping): passi 1-50 mediana 3.7, p99 10 (sopra 7: 16%);
 # passi 51-150 mediana 3.2, p99 6.0 (sopra 7: 1%). Stesso comportamento della CE: si tiene 7.
+# 8s + CE + Dice (misurato allo stesso modo): passi 1-50 mediana 3.4, p99 11.6 (sopra 7: 18%);
+# passi 51-150 mediana 3.7, p99 7.1 (sopra 7: 2%). Un po' più alta (lo skip da pool3), ma taglia ancora
+# solo i picchi: si tiene 7 (anche per confrontare le run con la stessa soglia).
 MAX_GRAD_NORM = 7.0
 
 
