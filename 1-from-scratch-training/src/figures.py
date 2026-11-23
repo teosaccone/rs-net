@@ -5,6 +5,7 @@ Uso: python figures.py   (risultati in outputs/figures/)
 Produce:
   val_miou.png            mIoU di validazione per epoca, tutte le run sovrapposte
   iou_per_class.png       IoU di test per classe, run affiancate
+  f1_per_class.png        F1 di test per classe, run affiancate
   recall_pred_gt.png      per classe: recall e pixel predetti / pixel veri (sotto 1 = classe sotto-predetta)
   confusion_<run>.png     confusion matrix di test normalizzata per riga (diagonale = recall)
   qualitative.png         immagine | ground truth | predizione di ogni run, su immagini di test
@@ -74,22 +75,33 @@ def load_test_metrics() -> dict[str, dict]:
     return {name: json.loads((run_dir / "test_metrics.json").read_text()) for name, (_, run_dir) in RUNS.items()}
 
 
-def plot_iou_per_class(metrics: dict[str, dict]) -> None:
-    """Barre affiancate dell'IoU di test per classe, una barra per run."""
+def scores_per_class(m: dict, score: str) -> np.ndarray:
+    """IoU o F1 per classe dalla confusion matrix di test (cm[vera][predetta]).
+
+    IoU = TP / (TP + FP + FN),  F1 = 2 TP / (2 TP + FP + FN) = 2 IoU / (1 + IoU).
+    """
+    cm = np.array(m["confusion_matrix"], dtype=float)
+    tp, gt, pred = np.diag(cm), cm.sum(axis=1), cm.sum(axis=0)  # gt = TP + FN, pred = TP + FP
+    return tp / (gt + pred - tp) if score == "iou" else 2 * tp / (gt + pred)
+
+
+def plot_per_class(metrics: dict[str, dict], score: str) -> None:
+    """Barre affiancate di IoU ("iou") o F1 ("f1") di test per classe, una barra per run."""
+    label = {"iou": "IoU", "f1": "F1"}[score]
+    mean_key = {"iou": "miou", "f1": "f1"}[score]  # media già salvata in test_metrics.json
     n_runs = len(metrics)
     width = 0.8 / n_runs
     x = np.arange(conf.N_CLASSES)
     fig, ax = plt.subplots(figsize=(12, 4.5))
     for i, ((name, m), color) in enumerate(zip(metrics.items(), RUN_COLORS)):
-        ious = [m["iou_per_class"][c] for c in conf.CLASS_NAMES]
-        ax.bar(x + (i - (n_runs - 1) / 2) * width, ious, width * 0.9, color=color,
-               label=f"{name} (mIoU {m['miou']:.3f})")
+        ax.bar(x + (i - (n_runs - 1) / 2) * width, scores_per_class(m, score), width * 0.9, color=color,
+               label=f"{name} (m{label} {m[mean_key]:.3f})")
     ax.set_xticks(x, conf.CLASS_NAMES, rotation=45, ha="right")
-    ax.set(ylabel="IoU di test", ylim=(0, 1), title="IoU per classe sul test set")
+    ax.set(ylabel=f"{label} di test", ylim=(0, 1.12), title=f"{label} per classe sul test set")
     ax.grid(axis="y", alpha=0.3)
-    ax.legend()
+    ax.legend(ncol=n_runs, loc="upper center", fontsize=9)  # in una riga sopra le barre (che arrivano a ~1)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "iou_per_class.png", dpi=150)
+    fig.savefig(OUT_DIR / f"{score}_per_class.png", dpi=150)
     plt.close(fig)
 
 
@@ -215,7 +227,8 @@ def main() -> None:
     # 1. Grafici dai file già salvati (log.csv, test_metrics.json): niente GPU
     plot_val_miou()
     metrics = load_test_metrics()
-    plot_iou_per_class(metrics)
+    plot_per_class(metrics, "iou")
+    plot_per_class(metrics, "f1")
     plot_recall_pred_gt(metrics)
     for name, m in metrics.items():
         plot_confusion(name, m)
