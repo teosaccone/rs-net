@@ -45,13 +45,15 @@ class VGGBackbone(nn.Module):
     def init_random_weights(self):
         """Pesi casuali per il training da zero (senza ImageNet): init di He (Kaiming), bias a zero.
 
-        Senza BatchNorm, con 13 conv + ReLU di fila, l'init di default di PyTorch fa rimpicciolire il
-        segnale a ogni strato. Con std = sqrt(2 / fan_in) la varianza delle attivazioni resta circa
-        costante attraverso le ReLU (He et al. 2015): il segnale arriva vivo fino a pool5.
+        Stessa init della VGG di torchvision (vgg16(weights=None)): std = sqrt(2 / fan_out),
+        fan_out = canali di uscita x 3 x 3. Serve farla qui perché le nostre conv sono nn.Conv2d
+        create da make_vgg_features, non la classe VGG di torchvision: senza questa chiamata
+        resterebbe l'init di default di PyTorch, che senza BatchNorm fa quasi sparire il segnale
+        dopo 13 conv + ReLU (std a pool5 ~0.005 invece di ~0.16).
         """
         for m in self.features:
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="relu")
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 nn.init.zeros_(m.bias)
 
     def load_vgg16_weights(self, vgg16_model: nn.Module):
