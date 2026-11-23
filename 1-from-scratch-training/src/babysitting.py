@@ -32,7 +32,7 @@ from engine import build_model, dice_loss, evaluate, train_one_epoch
 from transforms import get_train_transforms, get_val_transforms
 
 # ------------------------------------------------------------------ parametri
-OUT_DIR = conf.OUTPUT_DIR / f"babysitting_{conf.MODEL}_{conf.LOSS}"
+OUT_DIR = conf.OUTPUT_DIR / f"babysitting_{conf.RUN_NAME}"  # es. babysitting_fcn32s_ce_scratch (run 0)
 BATCH_SIZE = 4   # immagini per micro-batch (crop 256x512: stanno in 4 GB)
 ACCUM_STEPS = 2  # fasi 3-4: 4 x 2 = batch effettivo 8, come in train.py
 
@@ -197,7 +197,8 @@ def narrow_range(results: list[dict], key: str, top_k: int = 3) -> tuple[float, 
 # ------------------------------------------------------------------ main
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli | output: {OUT_DIR}")
+    print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | pesi ImageNet: {conf.PRETRAINED} | "
+          f"batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli | output: {OUT_DIR}")
     mean, std = conf.IMAGENET_MEAN, conf.IMAGENET_STD
     train, val, _ = split_train_val_test()
 

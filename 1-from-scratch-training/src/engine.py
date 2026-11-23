@@ -17,10 +17,11 @@ MODELS = {"fcn32s": FCN32s, "fcn16s": FCN16s, "fcn8s": FCN8s}
 
 
 def build_model(lr: float, wd: float, dropout: bool = True, momentum: float = 0.9,
-                model_name: str = conf.MODEL):
-    """Rete pre-addestrata + SGD + GradScaler, sempre con lo stesso seed (stessa inizializzazione)."""
+                model_name: str = conf.MODEL, pretrained: bool = conf.PRETRAINED):
+    """Rete (pre-addestrata su ImageNet o da zero) + SGD + GradScaler, sempre con lo stesso seed
+    (stessa inizializzazione, anche dei pesi casuali)."""
     seed_everything(conf.SEED)
-    model = MODELS[model_name](pretrained=True).cuda()
+    model = MODELS[model_name](pretrained=pretrained).cuda()
     if not dropout:
         model.head.drop6.p = model.head.drop7.p = 0.0
     params = [p for p in model.parameters() if p.requires_grad]  # gli upsampling congelati restano fuori

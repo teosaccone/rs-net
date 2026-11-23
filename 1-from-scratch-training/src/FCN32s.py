@@ -42,6 +42,10 @@ class FCN32s(nn.Module):
 
         if pretrained:
             self.load_pretrained_vgg16()
+        else:
+            # Da zero (run 0): pesi casuali con l'init di He invece di quella di default di PyTorch
+            self.backbone.init_random_weights()
+            self.head.init_random_weights()
 
     def forward(self, x):
         _, _, pool5 = self.backbone(x)  # la 32s usa solo pool5 (pool3 e pool4 servono a 8s e 16s)

@@ -1,4 +1,4 @@
-"""Training su Cityscapes della rete scelta in conf.MODEL (fcn32s o fcn16s).
+"""Training su Cityscapes della rete scelta in conf.MODEL (fcn32s, fcn16s o fcn8s), da ImageNet o da zero (conf.PRETRAINED).
 
 Uso:
   python train.py              training completo
@@ -29,7 +29,7 @@ from metrics import mean_iou
 # ------------------------------------------------------------------ parametri
 DEBUG = os.environ.get("DEBUG") == "1"
 RESUME = os.environ.get("RESUME") == "1"  # esplicito: un run nuovo non riprende per sbaglio da uno vecchio
-RUN_NAME = f"{conf.MODEL}_{conf.LOSS}"
+RUN_NAME = conf.RUN_NAME  # <modello>_<loss>, con "_scratch" se la rete parte da pesi casuali
 OUT_DIR = conf.OUTPUT_DIR / (RUN_NAME + "_debug" if DEBUG else RUN_NAME)  # la prova non sovrascrive il run vero
 
 EPOCHS = 1 if DEBUG else 80
@@ -42,7 +42,7 @@ BATCH_SIZE = 8 if ON_KAGGLE else 2   # immagini per micro-batch (quelle che stan
 ACCUM_STEPS = 1 if ON_KAGGLE else 4
 EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 
-# (lr, wd, dice_weight) per (modello, loss), batch effettivo 8, presi dal babysitting.
+# Iperparametri per run, batch effettivo 8, presi dal babysitting.
 # dice_weight = peso lambda del Dice nella loss CE + lambda * Dice (0 per la sola CE).
 # fcn32s: babysitting a batch 4 (outputs/babysitting/best_hparams.json: lr 1.64e-3, wd 6.65e-4),
 #   lr portata a batch 8 con la regola della radice: lr proporzionale a sqrt(batch). Più prudente della
@@ -63,14 +63,19 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   sovra-predette (rider 1.75, motorcycle 2.16 con 4) e l'IoU cala.
 # fcn8s: stessa ricetta della 16s (si allena con la loss migliore tra run B e run D), senza random search:
 #   solo loss iniziale, overfit, DEBUG e misura della norma del gradiente prima del run lungo.
+# fcn32s_ce_scratch (run 0, pesi casuali): babysitting completo da fare (outputs/babysitting_fcn32s_ce_scratch/).
+#   Valori a None finché non è fatto; anche la soglia di clipping va misurata di nuovo (pesi casuali ->
+#   norma del gradiente diversa).
+# Chiave = conf.RUN_NAME; valore = (lr, wd, peso Dice, soglia del gradient clipping).
 HPARAMS = {
-    ("fcn32s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
-    ("fcn16s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
-    ("fcn16s", "ce_dice"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0),
-    ("fcn8s", "ce"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0),
-    ("fcn8s", "ce_dice"): (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0),
+    "fcn32s_ce": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0, 7.0),
+    "fcn16s_ce": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0, 7.0),
+    "fcn16s_ce_dice": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0, 7.0),
+    "fcn8s_ce": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0, 7.0),
+    "fcn8s_ce_dice": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0, 7.0),
+    "fcn32s_ce_scratch": (None, None, 0.0, None),
 }
-LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
+LR, WD, DICE_WEIGHT, MAX_GRAD_NORM = HPARAMS[RUN_NAME]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
 # (batch effettivo 8, lr 2.3e-3): mediana 2.7, 99° percentile 6.6-7.5. Con 7 si taglia ~1% dei passi
 # (solo i picchi, soprattutto all'inizio): la dinamica trovata col babysitting resta quasi intatta.
@@ -79,7 +84,6 @@ LR, WD, DICE_WEIGHT = HPARAMS[(conf.MODEL, conf.LOSS)]
 # 8s + CE + Dice (misurato allo stesso modo): passi 1-50 mediana 3.4, p99 11.6 (sopra 7: 18%);
 # passi 51-150 mediana 3.7, p99 7.1 (sopra 7: 2%). Un po' più alta (lo skip da pool3), ma taglia ancora
 # solo i picchi: si tiene 7 (anche per confrontare le run con la stessa soglia).
-MAX_GRAD_NORM = 7.0
 
 
 def save_history(history: list[dict]) -> None:
@@ -146,9 +150,10 @@ def test_best_model(model, test_dl) -> None:
 
 
 def main() -> None:
-    assert LR is not None, f"Mancano gli iperparametri di {conf.MODEL} + {conf.LOSS} in HPARAMS: fai prima il babysitting"
+    assert LR is not None and MAX_GRAD_NORM is not None, \
+        f"Mancano gli iperparametri di {RUN_NAME} in HPARAMS: fai prima il babysitting e misura la norma del gradiente"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | dati: {conf.DATA_ROOT} | output: {OUT_DIR} | DEBUG={DEBUG}")
+    print(f"Modello: {conf.MODEL} | loss: {conf.LOSS} | pesi ImageNet: {conf.PRETRAINED} | dati: {conf.DATA_ROOT} | output: {OUT_DIR} | DEBUG={DEBUG}")
     print(f"{EPOCHS} epoche, batch {BATCH_SIZE} x {ACCUM_STEPS} accumuli = {EFFECTIVE_BATCH}, "
           f"lr {LR:.2e}, wd {WD:.2e}, peso Dice {DICE_WEIGHT:g}")
 

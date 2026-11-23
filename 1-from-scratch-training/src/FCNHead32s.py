@@ -36,6 +36,15 @@ class FCNHead32s(nn.Module):
             return h
         return self.upscore(h)
 
+    def init_random_weights(self):
+        """fc6 e fc7 casuali (init di He, come il backbone) per il training da zero.
+
+        score_fr resta a zero e upscore bilineare: non vengono da ImageNet, sono uguali nei due casi.
+        """
+        for conv in (self.fc6, self.fc7):
+            nn.init.kaiming_normal_(conv.weight, mode="fan_in", nonlinearity="relu")
+            nn.init.zeros_(conv.bias)
+
     def copy_params_from_vgg16(self, vgg16_model: nn.Module):
         """Reshapa e copia i pesi dei layer FC (fc6, fc7) di VGG16 nei Conv2d."""
         fc_mapping = [(0, self.fc6), (3, self.fc7)]

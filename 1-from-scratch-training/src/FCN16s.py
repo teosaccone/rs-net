@@ -31,6 +31,9 @@ class FCN16s(nn.Module):
         self._initialize_weights()
         if pretrained:
             self.load_pretrained_vgg16()
+        else:  # da zero: init di He su backbone e fc6/fc7 (come FCN32s)
+            self.backbone.init_random_weights()
+            self.head.init_random_weights()
 
     def forward(self, x):
         _, pool4, pool5 = self.backbone(x)  # pool3 serve solo alla 8s
