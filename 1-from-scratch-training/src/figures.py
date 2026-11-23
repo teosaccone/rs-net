@@ -38,6 +38,7 @@ RUNS = {
     "FCN-32s": ("fcn32s", conf.OUTPUT_DIR / "train"),  # run A (cartella con il nome vecchio)
     "FCN-16s": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce"),
     "FCN-16s + Dice": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce_dice"),  # run D: loss CE + Dice
+    "FCN-8s + Dice": ("fcn8s", conf.OUTPUT_DIR / "fcn8s_ce_dice"),
 }
 # Un colore fisso per run (palette categoriale: blu, arancio, acqua, giallo)
 RUN_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
