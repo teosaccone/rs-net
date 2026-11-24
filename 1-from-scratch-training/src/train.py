@@ -63,9 +63,12 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 #   sovra-predette (rider 1.75, motorcycle 2.16 con 4) e l'IoU cala.
 # fcn8s: stessa ricetta della 16s (si allena con la loss migliore tra run B e run D), senza random search:
 #   solo loss iniziale, overfit, DEBUG e misura della norma del gradiente prima del run lungo.
-# fcn32s_ce_scratch (run 0, pesi casuali): babysitting completo da fare (outputs/babysitting_fcn32s_ce_scratch/).
-#   Valori a None finché non è fatto; anche la soglia di clipping va misurata di nuovo (pesi casuali ->
-#   norma del gradiente diversa).
+# fcn32s_ce_scratch (run 0, pesi casuali): babysitting completo (outputs/babysitting_fcn32s_ce_scratch/),
+#   già a batch effettivo 8 -> lr e wd usati così. Ricerca lr: 1e-5 ferma (con ImageNet scendeva), 1e-4..1e-2
+#   scendono, 1e-1 esplode. Fine (5 epoche): migliore lr 7.42e-3, wd 2.51e-4 (mIoU 0.182); lr 8.83e-3 wd
+#   8.41e-4 -> 0.180; lr ~2e-3 -> 0.14-0.16; wd > 1e-3 peggiora. Da zero serve una lr ~3 volte più alta.
+#   Soglia di clipping misurata (150 passi senza clipping, lr 7.42e-3): dopo 50 passi mediana 4.1, p95 8.7,
+#   p99 10.7, max 11.1 (con 7 si taglierebbe l'11%). Soglia 10 (~2.5 x mediana): taglia ~3%, solo i picchi.
 # Chiave = conf.RUN_NAME; valore = (lr, wd, peso Dice, soglia del gradient clipping).
 HPARAMS = {
     "fcn32s_ce": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0, 7.0),
@@ -73,7 +76,7 @@ HPARAMS = {
     "fcn16s_ce_dice": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0, 7.0),
     "fcn8s_ce": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 0.0, 7.0),
     "fcn8s_ce_dice": (1.64e-3 * (8 / 4) ** 0.5, 6.65e-4, 1.0, 7.0),
-    "fcn32s_ce_scratch": (None, None, 0.0, None),
+    "fcn32s_ce_scratch": (7.42e-3, 2.51e-4, 0.0, 10.0),
 }
 LR, WD, DICE_WEIGHT, MAX_GRAD_NORM = HPARAMS[RUN_NAME]
 # Gradient clipping: protezione dai picchi. Scelto misurando la norma SENZA clipping per ~1 epoca
