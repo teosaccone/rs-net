@@ -153,8 +153,10 @@ def plot_confusion(name: str, m: dict) -> None:
            title=f"{name}: confusion matrix di test normalizzata per riga (mIoU {m['miou']:.3f})")
     fig.colorbar(im, ax=ax, fraction=0.046)
     fig.tight_layout()
-    # Nome del file dal nome della run: "FCN-16s + Dice" -> confusion_fcn16s_dice.png
-    fig.savefig(OUT_DIR / f"confusion_{name.lower().replace('-', '').replace(' + ', '_')}.png", dpi=150)
+    # Nome del file dal nome della run: "FCN-16s + Dice" -> confusion_fcn16s_dice.png,
+    # "FCN-32s da zero" -> confusion_fcn32s_da_zero.png (niente spazi nei nomi dei file)
+    tag = name.lower().replace("-", "").replace(" + ", "_").replace(" ", "_")
+    fig.savefig(OUT_DIR / f"confusion_{tag}.png", dpi=150)
     plt.close(fig)
 
 
