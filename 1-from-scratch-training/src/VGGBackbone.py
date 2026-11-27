@@ -21,23 +21,40 @@ def make_vgg_features(cfg=VGG16_CFG):
     return nn.Sequential(*layers)
 
 
-# Indice in self.features subito dopo il 4° maxpool: features[:24] finisce con pool4.
-# (ogni blocco è conv+ReLU ripetuti + un maxpool; il 4° maxpool è all'indice 23)
+# Indici in self.features subito dopo il 3° e il 4° maxpool: features[:17] finisce con pool3,
+# features[:24] con pool4. (ogni blocco è conv+ReLU ripetuti + un maxpool; il 3° maxpool è
+# all'indice 16, il 4° all'indice 23)
+POOL3_END = 17
 POOL4_END = 24
 
 
 class VGGBackbone(nn.Module):
-    """Backbone VGG16 senza il classificatore: restituisce pool4 (stride 16) e pool5 (stride 32)."""
+    """Backbone VGG16 senza il classificatore: restituisce pool3 (stride 8), pool4 (stride 16) e pool5 (stride 32)."""
     def __init__(self):
         super().__init__()
         self.features = make_vgg_features()
 
     def forward(self, x):
-        # Stessi layer di sempre, eseguiti in due pezzi per leggere anche il risultato intermedio.
+        # Stessi layer di sempre, eseguiti in tre pezzi per leggere anche i risultati intermedi.
         # self.features resta un unico Sequential: i nomi dei pesi (features.N) non cambiano.
-        pool4 = self.features[:POOL4_END](x)
+        pool3 = self.features[:POOL3_END](x)
+        pool4 = self.features[POOL3_END:POOL4_END](pool3)
         pool5 = self.features[POOL4_END:](pool4)
-        return pool4, pool5
+        return pool3, pool4, pool5
+
+    def init_random_weights(self):
+        """Pesi casuali per il training da zero (senza ImageNet): init di He (Kaiming), bias a zero.
+
+        Stessa init della VGG di torchvision (vgg16(weights=None)): std = sqrt(2 / fan_out),
+        fan_out = canali di uscita x 3 x 3. Serve farla qui perché le nostre conv sono nn.Conv2d
+        create da make_vgg_features, non la classe VGG di torchvision: senza questa chiamata
+        resterebbe l'init di default di PyTorch, che senza BatchNorm fa quasi sparire il segnale
+        dopo 13 conv + ReLU (std a pool5 ~0.005 invece di ~0.16).
+        """
+        for m in self.features:
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                nn.init.zeros_(m.bias)
 
     def load_vgg16_weights(self, vgg16_model: nn.Module):
         """Copia i pesi convoluzionali da vgg16.features."""
