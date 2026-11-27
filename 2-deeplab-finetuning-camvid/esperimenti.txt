@@ -1,0 +1,10 @@
+ex1: performance quando si scongela tutto il modello usando differential LR
+ ex1.1: lr fisso
+ ex1.2: lr differenziato
+ex2: performance quando si scongela solo l'ultimo layer
+ex3: sbloccare solo o parte del decoder
+ex4: sfruttare focal/dice loss oppure somma di tutte e 3
+ex5: vedere come va se si aumenta la luminosità del dataset 
+
+IMPORTANTE: nel primo caso c'è un problema ovvero che la validation loss è più bassa della training loss
+se scongelo solo l'ultimo layer il modello va in underfitting?

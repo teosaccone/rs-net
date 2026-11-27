@@ -1,1 +1,0 @@
-Al fine di eseguire velocemente questo esercizio è stato fatto un porting da VS Code a Kaggle
