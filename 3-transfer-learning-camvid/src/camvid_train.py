@@ -50,7 +50,8 @@ EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 # Chiave = conf.RUN_NAME; valore = (lr, wd, peso Dice, soglia del gradient clipping).
 # lr, wd e soglia: da camvid_babysitting.py (outputs/babysitting_<RUN_NAME>/best_hparams.json). None = da fare.
 HPARAMS = {
-    "es3_fcn8s_ce_dice_imagenet": (None, None, 1.0, None),
+    # babysitting: lr 1e-2 migliore (val mIoU 0.741 in 10 epoche), norma gradiente mediana 1.8, p99 7.2
+    "es3_fcn8s_ce_dice_imagenet": (1e-2, 6.65e-4, 1.0, 5.0),
     "es3_fcn8s_ce_dice_cityscapes": (None, None, 1.0, None),
 }
 LR, WD, DICE_WEIGHT, MAX_GRAD_NORM = HPARAMS[RUN_NAME]
