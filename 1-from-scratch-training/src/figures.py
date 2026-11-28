@@ -40,9 +40,11 @@ RUNS = {
     "FCN-16s": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce"),
     "FCN-16s + Dice": ("fcn16s", conf.OUTPUT_DIR / "fcn16s_ce_dice"),  # run D: loss CE + Dice
     "FCN-8s + Dice": ("fcn8s", conf.OUTPUT_DIR / "fcn8s_ce_dice"),
+    "FCN-32s da zero": ("fcn32s", conf.OUTPUT_DIR / "fcn32s_ce_scratch"),  # run 0: senza ImageNet
 }
-# Un colore fisso per run (palette categoriale: blu, arancio, acqua, giallo)
-RUN_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+# Un colore fisso per run, nell'ordine di RUNS (aggiungendo una run le altre non cambiano colore):
+# blu, arancio, acqua, giallo, viola
+RUN_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#8f5bd6"]
 
 N_QUALITATIVE = 4              # immagini di test nelle figure qualitative
 THIN_CLASSES = [5, 6, 7]       # pole, traffic light, traffic sign: dove si vede l'effetto dello skip
@@ -97,9 +99,9 @@ def plot_per_class(metrics: dict[str, dict], score: str) -> None:
         ax.bar(x + (i - (n_runs - 1) / 2) * width, scores_per_class(m, score), width * 0.9, color=color,
                label=f"{name} (m{label} {m[mean_key]:.3f})")
     ax.set_xticks(x, conf.CLASS_NAMES, rotation=45, ha="right")
-    ax.set(ylabel=f"{label} di test", ylim=(0, 1.12), title=f"{label} per classe sul test set")
+    ax.set(ylabel=f"{label} di test", ylim=(0, 1.2), title=f"{label} per classe sul test set")
     ax.grid(axis="y", alpha=0.3)
-    ax.legend(ncol=n_runs, loc="upper center", fontsize=9)  # in una riga sopra le barre (che arrivano a ~1)
+    ax.legend(ncol=3, loc="upper center", fontsize=9)  # su due righe sopra le barre (che arrivano a ~1)
     fig.tight_layout()
     fig.savefig(OUT_DIR / f"{score}_per_class.png", dpi=150)
     plt.close(fig)
@@ -121,13 +123,13 @@ def plot_recall_pred_gt(metrics: dict[str, dict]) -> None:
         offset = (i - (n_runs - 1) / 2) * width
         ax_rec.bar(x + offset, tp / gt, width * 0.9, color=color, label=name)
         ax_ratio.bar(x + offset, pred / gt, width * 0.9, color=color, label=name)
-    ax_rec.set(ylabel="recall di test", ylim=(0, 1.15), title="Recall e pixel predetti / pixel veri per classe (test)")
+    ax_rec.set(ylabel="recall di test", ylim=(0, 1.25), title="Recall e pixel predetti / pixel veri per classe (test)")
     ax_ratio.axhline(1.0, color="black", linewidth=1)  # 1 = la classe è predetta tanto quanto c'è
     ax_ratio.set(ylabel="pixel predetti / pixel veri")
     ax_ratio.set_xticks(x, conf.CLASS_NAMES, rotation=45, ha="right")
     for ax in (ax_rec, ax_ratio):
         ax.grid(axis="y", alpha=0.3)
-    ax_rec.legend(ncol=n_runs, loc="upper center")  # in una riga sopra le barre (che arrivano a 1)
+    ax_rec.legend(ncol=3, loc="upper center", fontsize=9)  # su due righe sopra le barre (che arrivano a 1)
     fig.tight_layout()
     fig.savefig(OUT_DIR / "recall_pred_gt.png", dpi=150)
     plt.close(fig)
@@ -151,8 +153,10 @@ def plot_confusion(name: str, m: dict) -> None:
            title=f"{name}: confusion matrix di test normalizzata per riga (mIoU {m['miou']:.3f})")
     fig.colorbar(im, ax=ax, fraction=0.046)
     fig.tight_layout()
-    # Nome del file dal nome della run: "FCN-16s + Dice" -> confusion_fcn16s_dice.png
-    fig.savefig(OUT_DIR / f"confusion_{name.lower().replace('-', '').replace(' + ', '_')}.png", dpi=150)
+    # Nome del file dal nome della run: "FCN-16s + Dice" -> confusion_fcn16s_dice.png,
+    # "FCN-32s da zero" -> confusion_fcn32s_da_zero.png (niente spazi nei nomi dei file)
+    tag = name.lower().replace("-", "").replace(" + ", "_").replace(" ", "_")
+    fig.savefig(OUT_DIR / f"confusion_{tag}.png", dpi=150)
     plt.close(fig)
 
 
