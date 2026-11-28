@@ -14,7 +14,6 @@ immagini Cityscapes 512x1024, e la scala conta molto per una rete non riaddestra
 Uso: python zero_shot.py   (risultati in outputs/es3_zero_shot/)
 """
 import json
-import sys
 
 import matplotlib
 
@@ -26,14 +25,10 @@ from matplotlib.colors import LinearSegmentedColormap
 from tqdm import tqdm
 
 import camvid_conf as cconf
-
-sys.path.insert(0, str(cconf.FCN_SRC))  # reti FCN, metriche e conf di Cityscapes del punto 1
-import conf as cityscapes_conf  # noqa: E402  (classi Cityscapes, nell'ordine dei trainId)
-import metrics  # noqa: E402
-from engine import MODELS  # noqa: E402
-
-from camvid_dataset import build_split  # noqa: E402
-from camvid_utils import cityscapes_to_camvid_index, decode_segmap, to_camvid_hard, to_camvid_soft  # noqa: E402
+import camvid_metrics as metrics
+from camvid_dataset import build_split
+from camvid_engine import load_cityscapes_model
+from camvid_utils import cityscapes_to_camvid_index, decode_segmap, to_camvid_hard, to_camvid_soft
 
 # ------------------------------------------------------------------ parametri
 OUT_DIR = cconf.OUTPUT_DIR / "es3_zero_shot"
@@ -42,13 +37,6 @@ EVAL_SIZES = [(360, 480), (540, 720), (720, 960)]
 BATCH_SIZE = 2
 METHODS = {"hard": to_camvid_hard, "soft": to_camvid_soft}
 QUALITATIVE_IDX = [0, 60, 120, 180]  # immagini di test mostrate nella figura (sparse lungo le sequenze)
-
-
-def load_cityscapes_model() -> torch.nn.Module:
-    """FCN di Cityscapes con i pesi di best.pth, in eval su GPU (19 classi in uscita)."""
-    model = MODELS[cconf.CITYSCAPES_MODEL](pretrained=False)
-    model.load_state_dict(torch.load(cconf.CITYSCAPES_CKPT, map_location="cpu", weights_only=True))
-    return model.cuda().eval()
 
 
 @torch.no_grad()
@@ -126,8 +114,8 @@ def plot_qualitative(model: torch.nn.Module, mapping: torch.Tensor, height: int,
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Rete: {cconf.CITYSCAPES_MODEL} da {cconf.CITYSCAPES_CKPT} | dati: {cconf.DATA_ROOT} | output: {OUT_DIR}")
-    model = load_cityscapes_model()
-    mapping = cityscapes_to_camvid_index(cityscapes_conf.CLASS_NAMES)
+    model = load_cityscapes_model().cuda().eval()  # 19 classi in uscita
+    mapping = cityscapes_to_camvid_index(cconf.CITYSCAPES_CLASS_NAMES)
 
     results = {}
     for height, width in EVAL_SIZES:

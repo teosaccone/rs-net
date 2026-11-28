@@ -62,9 +62,11 @@ def make_loader(dataset: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
 
 
 def build_split(split: str, height: int = conf.IMG_HEIGHT, width: int = conf.IMG_WIDTH,
-                batch_size: int = conf.BATCH_SIZE, augment: bool = False) -> DataLoader:
-    """Loader di un solo split ("train", "val" o "test"); augment vale solo per "train"."""
+                batch_size: int = conf.BATCH_SIZE, augment: bool = False, limit: int | None = None) -> DataLoader:
+    """Loader di un solo split ("train", "val" o "test"); augment vale solo per "train".
+    limit: se passato, solo le prime limit immagini (prove veloci con DEBUG=1)."""
     images, masks = collect_split(conf.DATA_ROOT / split, conf.DATA_ROOT / f"{split}_labels")
+    images, masks = images[:limit], masks[:limit]
     if split == "train" and augment:
         tf = get_train_transforms(height=height, width=width, crop_size=(height, width), hflip=True,
                                   scale_range=conf.SCALE_RANGE, color_jitter=True)
@@ -75,6 +77,6 @@ def build_split(split: str, height: int = conf.IMG_HEIGHT, width: int = conf.IMG
 
 def build_dataloaders(height: int = conf.IMG_HEIGHT, width: int = conf.IMG_WIDTH,
                       batch_size: int = conf.BATCH_SIZE,
-                      augment: bool = False) -> tuple[DataLoader, DataLoader, DataLoader]:
+                      augment: bool = False, limit: int | None = None) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Loader di train, val e test (augmentation solo sul train, se richiesta)."""
-    return tuple(build_split(s, height, width, batch_size, augment) for s in ("train", "val", "test"))
+    return tuple(build_split(s, height, width, batch_size, augment, limit) for s in ("train", "val", "test"))

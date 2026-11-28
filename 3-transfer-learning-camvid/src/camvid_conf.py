@@ -3,8 +3,9 @@
 Classi, palette e accorpamento 32 -> 11 presi dal notebook del collega
 (2-deeplab-finetuning-camvid/differential-lr-finetuning.ipynb), così punto 2 e punto 3 usano le stesse etichette.
 
-I moduli di questa cartella hanno il prefisso "camvid_" per non scontrarsi con conf.py, utils.py, dataset.py
-di 1-from-scratch-training/src, che importiamo per riusare le reti FCN, le metriche e il training.
+I moduli di questa cartella hanno il prefisso "camvid_" per non scontrarsi con conf.py, utils.py, engine.py
+di 1-from-scratch-training/src (i test importano entrambe le cartelle). Reti FCN, metriche ed engine sono
+COPIE di quelli del punto 1 (adattate a 11 classi): il codice comune si riunirà con un refactoring a fine progetto.
 """
 import os
 from pathlib import Path
@@ -16,8 +17,6 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # Risale da .../rs-net/3-transfer-learning-camvid/src/camvid_conf.py a .../rs-net
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-# Codice del punto 1 (reti FCN, metriche, engine): da aggiungere a sys.path negli script
-FCN_SRC = PROJECT_ROOT / "1-from-scratch-training" / "src"
 # Dataset Kaggle "carlolepelaars/camvid": cartelle train/, train_labels/, val/, val_labels/, test/, test_labels/
 # (in locale in data/CamVid/; su Kaggle si imposta DATA_ROOT=/kaggle/input/.../CamVid)
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", PROJECT_ROOT / "data" / "CamVid"))
@@ -26,6 +25,12 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 # FCN addestrata su Cityscapes da cui si parte: la migliore del punto 1 (FCN-8s + CE + Dice, test mIoU 0.658)
 CITYSCAPES_MODEL = "fcn8s"
 CITYSCAPES_CKPT = OUTPUT_DIR / "fcn8s_ce_dice" / "best.pth"
+# Classi Cityscapes nell'ordine dei trainId (copia di conf.CLASS_NAMES del punto 1; un test controlla che coincidano)
+CITYSCAPES_CLASS_NAMES = [
+    "road", "sidewalk", "building", "wall", "fence", "pole", "traffic light",
+    "traffic sign", "vegetation", "terrain", "sky", "person", "rider", "car",
+    "truck", "bus", "train", "motorcycle", "bicycle",
+]
 
 # ---------------------------------------------------------------------------
 # CamVid: 11 classi semantiche + Void (ignorato)
@@ -128,8 +133,9 @@ CITYSCAPES_TO_CAMVID = {
 # ---------------------------------------------------------------------------
 # Immagini
 # ---------------------------------------------------------------------------
-# CamVid nativo: 720 x 960 (4:3). Risoluzione di training DA DECIDERE col collega (lui: 720x960 su Kaggle,
-# 360x480 nel conf.py del repository). La variante 1 si valuta a più risoluzioni (EVAL_SIZES in zero_shot.py).
+# CamVid nativo: 720 x 960 (4:3). Training e test delle varianti 2 e 3 a 360x480 (come il conf.py del punto 2
+# nel repository e SegNet; il notebook del collega usa 720x960 su Kaggle, ~4 volte più lento): da confermare.
+# La variante 1 si valuta a più risoluzioni (EVAL_SIZES in zero_shot.py).
 IMG_HEIGHT = 360
 IMG_WIDTH = 480
 
@@ -137,8 +143,33 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 # ---------------------------------------------------------------------------
-# Training (varianti 2 e 3, da completare)
+# Training (varianti 2 e 3): li usano camvid_babysitting.py e camvid_train.py
 # ---------------------------------------------------------------------------
+MODEL = "fcn8s"        # fcn32s / fcn16s / fcn8s
+LOSS = "ce_dice"       # ce / ce_dice (la migliore del punto 1)
+# Da dove partono i pesi:
+#   "imagenet"   variante 2: VGG16 ImageNet, testa nuova a 11 classi (come le run del punto 1, ma su CamVid)
+#   "cityscapes" variante 3: tutta la FCN di Cityscapes (CITYSCAPES_CKPT), classificatori ridotti a 11 classi
+INIT = "imagenet"
+RUN_NAME = f"es3_{MODEL}_{LOSS}_{INIT}"  # cartella di output, es. outputs/es3_fcn8s_ce_dice_imagenet/
+
+# Variante 3: per ogni classe CamVid, la classe Cityscapes "rappresentante" di cui si copiano i pesi dei
+# classificatori (score_fr, score_pool4, score_pool3). Per le classi accorpate si sceglie la più frequente
+# del gruppo (es. Car <- car, non truck/bus/train). Vedi camvid_engine.transfer_cityscapes_weights.
+CITYSCAPES_REPRESENTATIVE = {
+    "Sky": "sky",
+    "Building": "building",       # + wall
+    "Pole": "pole",
+    "Road": "road",
+    "Sidewalk": "sidewalk",
+    "Tree": "vegetation",         # + terrain
+    "SignSymbol": "traffic sign",  # + traffic light
+    "Fence": "fence",
+    "Car": "car",                 # + truck, bus, train
+    "Pedestrian": "person",
+    "Bicyclist": "bicycle",       # + rider, motorcycle
+}
+
 BATCH_SIZE = 4
 SEED = 42
 SCALE_RANGE = (0.75, 1.5)  # zoom casuale durante il training

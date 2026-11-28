@@ -1,4 +1,7 @@
-"""Conversione delle maschere CamVid e delle predizioni Cityscapes -> CamVid (punto 3)."""
+"""Conversione delle maschere CamVid e delle predizioni Cityscapes -> CamVid (punto 3), più seed e kernel
+bilineare (copiati da utils.py del punto 1)."""
+import random
+
 import numpy as np
 import torch
 
@@ -54,3 +57,29 @@ def to_camvid_soft(logits: torch.Tensor, mapping: torch.Tensor) -> torch.Tensor:
     groups = torch.nn.functional.one_hot(mapping, conf.N_CLASSES)     # [19, 11]: 1 se Cityscapes c -> CamVid k
     camvid_probs = torch.einsum("bchw,ck->bkhw", probs, groups.to(probs))  # somma per gruppo: [B, 11, H, W]
     return camvid_probs.argmax(dim=1)
+
+
+# ---------------------------------------------------------------------------
+# Copiati da utils.py del punto 1
+# ---------------------------------------------------------------------------
+def seed_everything(seed: int) -> None:
+    """Fissa i seed di random, numpy e torch (CPU e GPU) per la riproducibilità."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def get_bilinear_kernel(in_channels: int, out_channels: int, kernel_size: int) -> torch.Tensor:
+    """Kernel 2D per inizializzare ConvTranspose2d come upsampling bilineare (canale c -> canale c)."""
+    factor = (kernel_size + 1) // 2
+    center = factor - 1 if kernel_size % 2 == 1 else factor - 0.5
+    og = (
+        torch.arange(kernel_size, dtype=torch.float32).reshape(-1, 1),
+        torch.arange(kernel_size, dtype=torch.float32).reshape(1, -1),
+    )
+    filt = (1 - torch.abs(og[0] - center) / factor) * (1 - torch.abs(og[1] - center) / factor)
+    weight = torch.zeros((in_channels, out_channels, kernel_size, kernel_size), dtype=torch.float32)
+    channels = min(in_channels, out_channels)
+    weight[range(channels), range(channels), :, :] = filt
+    return weight
