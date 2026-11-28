@@ -1,6 +1,6 @@
 """Dataset e DataLoader di CamVid (codice del collega, dal notebook del punto 2).
 
-Split ufficiale già separato nelle cartelle del dataset Kaggle: train (367), val (101), test (233).
+Split ufficiale già separato nelle cartelle del dataset Kaggle: train (369), val (100), test (232).
 Maschera di un'immagine: stesso nome con suffisso _L (0001TP_009210.png -> 0001TP_009210_L.png).
 """
 import os
