@@ -133,11 +133,10 @@ CITYSCAPES_TO_CAMVID = {
 # ---------------------------------------------------------------------------
 # Immagini
 # ---------------------------------------------------------------------------
-# CamVid nativo: 720 x 960 (4:3). Training e test delle varianti 2 e 3 a 360x480 (come il conf.py del punto 2
-# nel repository e SegNet; il notebook del collega usa 720x960 su Kaggle, ~4 volte più lento): da confermare.
-# La variante 1 si valuta a più risoluzioni (EVAL_SIZES in zero_shot.py).
-IMG_HEIGHT = 360
-IMG_WIDTH = 480
+# Risoluzione scelta per tutto il punto 3: 720 x 960, quella nativa di CamVid (come il notebook del collega).
+# Variante 1: risultato principale qui, più il confronto con 360x480 e 540x720 (EVAL_SIZES in zero_shot.py).
+IMG_HEIGHT = 720
+IMG_WIDTH = 960
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)

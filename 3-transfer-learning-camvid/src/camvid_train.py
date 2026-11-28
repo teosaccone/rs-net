@@ -36,14 +36,15 @@ RUN_NAME = conf.RUN_NAME
 OUT_DIR = conf.OUTPUT_DIR / (RUN_NAME + "_debug" if DEBUG else RUN_NAME)
 
 # Da decidere prima del lancio (il poly porta la lr a 0 all'ultima epoca), uguale per le due varianti.
-# CamVid ha 367 immagini di train: 100 epoche = ~4600 aggiornamenti dei pesi (punto 1: 80 x 286 = ~22900).
+# CamVid ha 369 immagini di train: 100 epoche = ~4600 aggiornamenti dei pesi (punto 1: 80 x 286 = ~22900).
 EPOCHS = 1 if DEBUG else 100
-DEBUG_IMAGES = 40  # in DEBUG: 10 micro-batch = 5 passi dell'optimizer
+DEBUG_IMAGES = 40  # in DEBUG: 20 micro-batch = 5 passi dell'optimizer
 
-# Batch effettivo 8: su Kaggle in un colpo solo, in locale 2 micro-batch da 4 (VRAM da misurare col babysitting)
+# Batch effettivo 8: su Kaggle in un colpo solo, in locale 4 micro-batch da 2 a 720x960 (come il punto 1
+# a 512x1024; VRAM da misurare col babysitting)
 ON_KAGGLE = Path("/kaggle/working").exists()
-BATCH_SIZE = 8 if ON_KAGGLE else 4
-ACCUM_STEPS = 1 if ON_KAGGLE else 2
+BATCH_SIZE = 8 if ON_KAGGLE else 2
+ACCUM_STEPS = 1 if ON_KAGGLE else 4
 EFFECTIVE_BATCH = BATCH_SIZE * ACCUM_STEPS
 
 # Chiave = conf.RUN_NAME; valore = (lr, wd, peso Dice, soglia del gradient clipping).

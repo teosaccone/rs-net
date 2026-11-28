@@ -10,7 +10,7 @@ cambiano solo il dataset e i pesi di partenza. Fasi:
      di validazione. Senza clipping: si misura la norma del gradiente per scegliere la soglia, e la VRAM.
 
 Uso: python camvid_babysitting.py   (risultati in outputs/babysitting_<RUN_NAME>/)
-Batch effettivo 8 (micro-batch 4 x accumulo 2), lo stesso di camvid_train.py: lr e wd si usano così come sono.
+Batch effettivo 8 (micro-batch 2 x accumulo 4), lo stesso di camvid_train.py: lr e wd si usano così come sono.
 """
 import json
 import math
@@ -30,8 +30,8 @@ from camvid_transforms import get_val_transforms
 
 # ------------------------------------------------------------------ parametri
 OUT_DIR = conf.OUTPUT_DIR / f"babysitting_{conf.RUN_NAME}"
-BATCH_SIZE = 4   # immagini per micro-batch (360x480: ~1/3 dei pixel di 512x1024, da misurare)
-ACCUM_STEPS = 2  # 4 x 2 = batch effettivo 8, come camvid_train.py e il punto 1
+BATCH_SIZE = 2   # immagini per micro-batch (720x960 = 1.3 volte i pixel di 512x1024, dove 2 stavano in 4 GB: da misurare)
+ACCUM_STEPS = 4  # 2 x 4 = batch effettivo 8, come camvid_train.py e il punto 1
 DICE_WEIGHT = 1.0 if conf.LOSS == "ce_dice" else 0.0  # peso 1 scelto nel punto 1 (dice_weight_test.py)
 
 OVERFIT_IMAGES = 20
@@ -40,7 +40,7 @@ OVERFIT_LR = 1e-3
 
 LR_CANDIDATES = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 LR_SEARCH_WD = 1e-6     # regolarizzazione piccola
-LR_SEARCH_EPOCHS = 3    # 91 micro-batch per epoca -> ~270 micro-batch = ~135 aggiornamenti dei pesi
+LR_SEARCH_EPOCHS = 3    # 184 micro-batch per epoca -> ~550 micro-batch = ~138 aggiornamenti dei pesi
 LR_MIN_DROP = 0.80      # "scende" = loss finale sotto l'80% di quella iniziale (come nel punto 1)
 
 COMPARE_TRIALS = 4
